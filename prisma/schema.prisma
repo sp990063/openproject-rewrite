@@ -1,0 +1,474 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// USER & AUTH
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  avatarUrl     String?
+  // L2/S2 FIX: isSystemAdmin for system-wide admin check (used by hard-delete endpoint)
+  isSystemAdmin Boolean   @default(false)
+  // S2 FIX: passwordMigrationRequired — migrated users must reset password (old system used scrypt, new uses bcrypt)
+  passwordMigrationRequired Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  memberships   Member[]
+  assignedWPs   WorkPackage[] @relation("Assignee")
+  authorWPs     WorkPackage[] @relation("Author")
+  timeEntries   TimeEntry[]
+  approvedTimeEntries TimeEntry[] @relation("TimeEntryApprover")
+  // Wiki relations
+  wikiPages     WikiPage[]
+  wikiVersions  WikiPageVersion[]
+  // Forum relations
+  forums       Forum[]
+  forumThreads  ForumThread[]
+  forumPosts    ForumPost[]
+  // Document relations
+  documents    Document[]
+  // Meeting relations
+  meetings     Meeting[]
+  meetingAttendees MeetingAttendee[]
+  meetingMinutes MeetingMinutes[]
+
+  @@map("users")
+}
+
+// ============================================
+// PROJECT
+// ============================================
+
+model Project {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  identifier  String    @unique  // URL-safe slug
+  status      String    @default("active") // "active", "archived", "on_hold"
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  // Relations
+  members     Member[]
+  workPackages WorkPackage[]
+  versions    Version[]
+  modules     ProjectModule[]
+  // Phase 4 relations
+  wikiPages   WikiPage[]
+  forums      Forum[]
+  documents   Document[]
+  documentFolders DocumentFolder[]
+  meetings    Meeting[]
+
+  @@map("projects")
+}
+
+model Member {
+  id        String      @id @default(cuid())
+  // Foreign keys
+  userId    String
+  projectId String
+  roleId    String
+  // Timestamps
+  createdAt    DateTime @default(now())
+
+  // Relations
+  project      Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user         User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role         Role    @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, projectId])
+  @@map("members")
+}
+
+model Role {
+  id            String   @id @default(cuid())
+  name          String   @unique  // "Admin", "Member", "Viewer"
+  permissions   String[] // Stored as JSON string array; Phase 3 TypeScript casts to Permission[]
+
+  members  Member[]
+
+  @@map("roles")
+}
+
+// ============================================
+// WORK PACKAGES
+// ============================================
+
+model WorkPackage {
+  id            String    @id @default(cuid())
+  projectId     String
+  subject       String
+  description   String?
+  statusId      String
+  typeId        String
+  priorityId    String    // No default — must be set explicitly; use seeded "Normal" Priority ID
+  assigneeId    String?
+  authorId      String
+  startDate     DateTime?
+  dueDate       DateTime?
+  estimatedHours Float?
+  position      Int       @default(0)
+  parentId      String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  status       Status    @relation(fields: [statusId], references: [id])
+  type         Type      @relation(fields: [typeId], references: [id])
+  priority     Priority  @relation(fields: [priorityId], references: [id])
+  assignee     User?     @relation("Assignee", fields: [assigneeId], references: [id])
+  author       User      @relation("Author", fields: [authorId], references: [id])
+  parent       WorkPackage? @relation("ParentChild", fields: [parentId], references: [id])
+  children     WorkPackage[] @relation("ParentChild")
+  relations    WorkPackageRelation[] @relation("RelationFrom")
+  relationTo   WorkPackageRelation[] @relation("RelationTo")
+  timeEntries  TimeEntry[]
+  activities   Activity[]
+
+  @@index([projectId])
+  @@index([statusId])
+  @@index([assigneeId])
+  @@map("work_packages")
+}
+
+model Status {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  color     String   @default("#666")
+  position  Int      @default(0)
+  isClosed  Boolean  @default(false)
+
+  workPackages WorkPackage[]
+
+  @@map("statuses")
+}
+
+model Type {
+  id        String   @id @default(cuid())
+  name      String   @unique // "Task", "Bug", "Feature", "Milestone"
+  color     String   @default("#666")
+  position  Int      @default(0)
+  isMilestone Boolean @default(false)
+
+  workPackages WorkPackage[]
+
+  @@map("types")
+}
+
+model Priority {
+  id        String   @id @default(cuid())
+  name      String   @unique // "Low", "Normal", "High", "Urgent"
+  color     String   @default("#666")
+  position  Int      @default(0)
+
+  workPackages WorkPackage[]
+
+  @@map("priorities")
+}
+
+// ============================================
+// RELATIONS
+// ============================================
+
+model WorkPackageRelation {
+  id           String @id @default(cuid())
+  fromId       String
+  toId         String
+  relationType String  // "blocks", "blocked_by", "precedes", "follows", "relates"
+
+  from WorkPackage @relation("RelationFrom", fields: [fromId], references: [id], onDelete: Cascade)
+  to   WorkPackage @relation("RelationTo", fields: [toId], references: [id], onDelete: Cascade)
+
+  @@map("work_package_relations")
+}
+
+// ============================================
+// TIME TRACKING (Phase 5, but schema here)
+// ============================================
+
+model TimeEntry {
+  id            String    @id @default(cuid())
+  workPackageId String
+  userId        String
+  hours         Float
+  comment       String?
+  // M1 FIX: store spentOn as UTC DateTime + user timezone for correct display
+  spentOn       DateTime
+  userTimezone  String    @default("UTC")  // IANA timezone e.g. "Asia/Hong_Kong"
+
+  // Approval workflow
+  status        String    @default("pending")  // pending | submitted | approved | rejected
+  approvedBy    String?
+  approvedAt    DateTime?
+  rejectReason  String?
+
+  // Soft delete (M2: historical entries cannot be deleted)
+  deletedAt     DateTime?
+  deletedBy     String?
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+  user        User        @relation(fields: [userId], references: [id])
+  approver    User?       @relation("TimeEntryApprover", fields: [approvedBy], references: [id])
+
+  @@map("time_entries")
+}
+
+// ============================================
+// ACTIVITY / AUDIT TRAIL
+// ============================================
+
+model Activity {
+  id            String    @id @default(cuid())
+  workPackageId String
+  userId        String
+  action        String    // "created", "updated", "commented"
+  details       Json?     // Changed fields
+  createdAt     DateTime  @default(now())
+
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+
+  @@map("activities")
+}
+
+// ============================================
+// VERSIONS
+// ============================================
+
+model Version {
+  id        String    @id @default(cuid())
+  projectId String
+  name      String
+  status    String    @default("open")  // "open", "closed"
+  dueDate   DateTime?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@map("versions")
+}
+
+// ============================================
+// PROJECT MODULES (Phase 3)
+// ============================================
+
+model ProjectModule {
+  id        String   @id @default(cuid())
+  projectId String
+  module    String   // 'work_packages', 'gantt', 'board', 'calendar', 'wiki', 'forums', 'documents', 'meetings', 'time_tracking'
+  enabled   Boolean  @default(true)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, module])
+  @@map("project_modules")
+}
+
+// ============================================
+// WIKI (Phase 4)
+// ============================================
+
+model WikiPage {
+  id        String   @id @default(cuid())
+  projectId String
+  title     String
+  slug      String
+  content   String   @db.Text
+  parentId  String?
+  authorId  String
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project   Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    WikiPage?         @relation("WikiPageHierarchy", fields: [parentId], references: [id])
+  children  WikiPage[]        @relation("WikiPageHierarchy")
+  author    User              @relation(fields: [authorId], references: [id])
+  versions  WikiPageVersion[]
+
+  @@unique([projectId, slug])
+  @@map("wiki_pages")
+}
+
+model WikiPageVersion {
+  id          String   @id @default(cuid())
+  wikiPageId  String
+  content     String   @db.Text
+  authorId    String
+  version     Int
+  createdAt   DateTime @default(now())
+
+  wikiPage WikiPage @relation(fields: [wikiPageId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id])
+
+  @@index([wikiPageId])
+  @@map("wiki_page_versions")
+}
+
+// ============================================
+// FORUMS (Phase 4)
+// ============================================
+
+model Forum {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  description String?   @db.Text
+  authorId    String
+  createdAt   DateTime  @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+  threads   ForumThread[]
+
+  @@map("forums")
+}
+
+model ForumThread {
+  id          String    @id @default(cuid())
+  forumId     String
+  subject     String
+  authorId    String
+  isSticky    Boolean   @default(false)
+  isLocked    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  forum   Forum   @relation(fields: [forumId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
+  posts   ForumPost[]
+
+  @@map("forum_threads")
+}
+
+model ForumPost {
+  id          String    @id @default(cuid())
+  threadId    String
+  content     String    @db.Text
+  authorId    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  thread  ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  author  User         @relation(fields: [authorId], references: [id])
+
+  @@map("forum_posts")
+}
+
+// ============================================
+// DOCUMENTS (Phase 4)
+// ============================================
+
+model Document {
+  id          String    @id @default(cuid())
+  projectId   String
+  title       String
+  description String?
+  folderId    String?
+  authorId    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id])
+  folder    DocumentFolder? @relation(fields: [folderId], references: [id])
+
+  @@map("documents")
+}
+
+model DocumentFolder {
+  id          String    @id @default(cuid())
+  projectId   String
+  name        String
+  parentId    String?
+  createdAt   DateTime  @default(now())
+
+  project   Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parent    DocumentFolder?  @relation("DocumentFolderHierarchy", fields: [parentId], references: [id])
+  children  DocumentFolder[] @relation("DocumentFolderHierarchy")
+  documents Document[]
+
+  @@map("document_folders")
+}
+
+// ============================================
+// MEETINGS (Phase 4)
+// ============================================
+
+model Meeting {
+  id          String    @id @default(cuid())
+  projectId   String
+  title       String
+  startTime   DateTime
+  endTime     DateTime
+  location    String?
+  authorId    String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author    User        @relation(fields: [authorId], references: [id])
+  attendees MeetingAttendee[]
+  agenda    MeetingAgendaItem[]
+  minutes   MeetingMinutes?
+
+  @@map("meetings")
+}
+
+model MeetingAttendee {
+  id          String   @id @default(cuid())
+  meetingId   String
+  userId      String
+  response    String   @default("none")  // "none", "accepted", "declined"
+  comment     String?
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+
+  @@unique([meetingId, userId])
+  @@map("meeting_attendees")
+}
+
+model MeetingAgendaItem {
+  id          String   @id @default(cuid())
+  meetingId   String
+  title       String
+  notes       String?  @db.Text
+  duration    Int?     // minutes
+  position    Int      @default(0)
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+
+  @@map("meeting_agenda_items")
+}
+
+model MeetingMinutes {
+  id          String   @id @default(cuid())
+  meetingId   String   @unique
+  content     String   @db.Text
+  authorId    String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  meeting Meeting @relation(fields: [meetingId], references: [id], onDelete: Cascade)
+  author  User    @relation(fields: [authorId], references: [id])
+
+  @@map("meeting_minutes")
+}
