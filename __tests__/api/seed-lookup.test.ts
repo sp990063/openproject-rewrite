@@ -1,7 +1,7 @@
 import { testApiHandler } from 'next-test-api-route-handler'
-import * as statusesHandler from '../../statuses'
-import * as typesHandler from '../../types'
-import * as prioritiesHandler from '../../priorities'
+import * as statusesHandler from '../../pages/api/statuses/index'
+import * as typesHandler from '../../pages/api/types/index'
+import * as prioritiesHandler from '../../pages/api/priorities/index'
 
 describe('Statuses API', () => {
   it('GET /api/statuses returns 200 and array of statuses', async () => {

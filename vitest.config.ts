@@ -13,6 +13,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
+    exclude: ['.next/**', 'node_modules/**', 'pages/api/__tests__/**'],
     env: {
       DATABASE_URL: process.env.DATABASE_URL || 'postgresql://localhost:5432/openproject_rewrite_test',
     },
