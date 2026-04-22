@@ -1,14 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { Ratelimit } from '@upstash/ratelimit'
-import { Redis } from '@upstash/redis'
-
-// Rate limiter
-const ratelimit = new Ratelimit({
-  redis: Redis.fromEnv(),
-  limiter: Ratelimit.slidingWindow(10, '10 s'),
-})
+import { ratelimit } from '@/lib/ratelimit'
 
 const createProjectSchema = z.object({
   name: z.string().min(1).max(255),
@@ -17,10 +10,10 @@ const createProjectSchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Rate limiting for write methods
-  if (req.method !== 'GET') {
+  // Rate limiting for write methods (skip in test environment)
+  if (process.env.NODE_ENV !== 'test' && req.method !== 'GET') {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
-    const { success } = await ratelimit.limit(ip as string)
+    const success = await checkRateLimit(ip as string)
     if (!success) {
       return res.status(429).json({ error: 'Too many requests' })
     }

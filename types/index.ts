@@ -138,3 +138,66 @@ export interface ProjectModule {
   module: string
   enabled: boolean
 }
+
+// ─── Phase 2: Extended Types ────────────────────────────────────────────────
+
+/** Filter params for work package list queries */
+export interface WorkPackageFilter {
+  statusId?: string[]
+  typeId?: string[]
+  assigneeId?: string[]
+  priorityId?: string[]
+  startDate?: { gte?: string; lte?: string }
+  dueDate?: { gte?: string; lte?: string }
+  search?: string
+  projectId?: string
+}
+
+/** Work package with Gantt-specific computed fields */
+export interface GanttWorkPackage extends WorkPackage {
+  ganttStartDate: Date
+  ganttEndDate: Date
+  ganttLeft: number   // pixels from timeline origin
+  ganttWidth: number   // pixels (estimatedHours-based or day-based)
+}
+
+/** Board column (grouped by status) */
+export interface BoardColumn {
+  statusId: string
+  status: Status
+  limit?: number
+  workPackages: WorkPackage[]
+  isOverLimit: boolean
+  isAtLimit: boolean
+}
+
+/** Calendar event (work package as a day/week cell event) */
+export interface CalendarEvent {
+  id: string
+  workPackageId: string
+  subject: string
+  startDate: Date
+  endDate: Date
+  type: Type
+  status: Status
+  isMilestone: boolean
+  row: number   // which row within the day column
+  col: number   // which day column (0 = first day of range)
+}
+
+/** Saved query (user-defined filter + sort + group state) */
+export interface Query {
+  id: string
+  userId: string
+  projectId?: string | null
+  name: string
+  filters: WorkPackageFilter
+  sortBy: SortBy[]
+  groupBy?: string | null
+  displayMode: 'table' | 'gantt' | 'board' | 'calendar'
+  isDefault: boolean
+  createdAt: Date
+  updatedAt: Date
+}
+
+export type SortBy = [string, 'asc' | 'desc']

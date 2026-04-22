@@ -1,17 +1,21 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
-import { useWorkPackages } from '@/hooks/use-work-packages'
+import { useWorkPackages, useCreateWorkPackage } from '@/hooks/use-work-packages'
 import { Button, Badge, Modal, Input, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui'
 import Link from 'next/link'
 import { formatDate } from '@/lib/utils'
+import type { WorkPackageFilter } from '@/types'
 
 export const dynamic = 'force-dynamic'
 
 export default function WorkPackagesPage() {
   const router = useRouter()
   const { projectId } = router.query
-  const { workPackages, createWorkPackage } = useWorkPackages(projectId as string | undefined)
+
+  const filters: WorkPackageFilter = { projectId: projectId as string | undefined }
+  const { workPackages } = useWorkPackages(filters)
+  const createWorkPackage = useCreateWorkPackage()
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newWPSubject, setNewWPSubject] = useState('')

@@ -249,6 +249,24 @@ model Activity {
   @@map("activities")
 }
 
+// ─────────────────────────────────────────────
+// QUERIES (saved filter + sort + display state)
+model Query {
+  id         String   @id @default(cuid())
+  userId     String
+  projectId  String?
+  name       String
+  filters    Json     // WorkPackageFilter serialized
+  sortBy     Json     // SortBy[] serialized
+  groupBy    String?
+  displayMode String  @default("table")  // "table" | "gantt" | "board" | "calendar"
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@map("queries")
+}
+
 // ============================================
 // VERSIONS
 // ============================================

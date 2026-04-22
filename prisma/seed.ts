@@ -59,7 +59,7 @@ async function main() {
 
   for (const status of statuses) {
     await prisma.status.upsert({
-      where: { id: status.name.toLowerCase().replace(/\s+/g, '-') },
+      where: { name: status.name },
       update: {},
       create: status,
     })
@@ -81,7 +81,7 @@ async function main() {
 
   for (const type of types) {
     await prisma.type.upsert({
-      where: { id: type.name.toLowerCase() },
+      where: { name: type.name },
       update: {},
       create: type,
     })
@@ -103,7 +103,7 @@ async function main() {
 
   for (const priority of priorities) {
     await prisma.priority.upsert({
-      where: { id: priority.name.toLowerCase() },
+      where: { name: priority.name },
       update: {},
       create: priority,
     })
