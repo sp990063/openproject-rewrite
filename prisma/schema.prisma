@@ -199,6 +199,26 @@ model WorkPackageRelation {
 }
 
 // ============================================
+// SAVED QUERIES
+// ============================================
+
+model SavedQuery {
+  id          String   @id @default(cuid())
+  userId      String
+  projectId   String?
+  name        String
+  filters     Json     @default("{}")
+  sortBy      Json     @default("[]")
+  groupBy     String?
+  displayMode String   @default("table")
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("saved_queries")
+}
+
+// ============================================
 // TIME TRACKING (Phase 5, but schema here)
 // ============================================
 

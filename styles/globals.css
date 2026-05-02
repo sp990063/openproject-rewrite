@@ -24,3 +24,47 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ─── Custom scrollbar ─────────────────────────────────────────────────────── */
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* ─── Text selection ───────────────────────────────────────────────────────── */
+
+::selection {
+  background: #bfdbfe;
+  color: #1e40af;
+}
+
+/* ─── Smooth scroll ─────────────────────────────────────────────────────────── */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* ─── Focus ring (applies to all interactive elements) ────────────────────── */
+
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* ─── Prose overflow ───────────────────────────────────────────────────────── */
+
+.prose {
+  max-width: 100%;
+  overflow-wrap: break-word;
+}

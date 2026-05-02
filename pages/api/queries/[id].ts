@@ -1,96 +1,61 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
-import { z } from 'zod'
-import { checkRateLimit } from '@/lib/ratelimit'
 import { auth } from '@/lib/auth'
 
-const updateQuerySchema = z.object({
-  name: z.string().min(1).max(255).optional(),
-  filters: z.record(z.unknown()).optional(),
-  sortBy: z.array(z.tuple([z.string(), z.enum(['asc', 'desc'])])).optional(),
-  groupBy: z.string().nullable().optional(),
-  displayMode: z.enum(['table', 'gantt', 'board', 'calendar']).optional(),
-  isDefault: z.boolean().optional(),
-})
-
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { query } = req
-  const id = query.id as string
+  const session = await auth()
+  if (!session?.user?.id) return res.status(401).json({ error: 'Unauthorized' })
 
-  if (!id) {
-    return res.status(400).json({ error: 'Query ID is required' })
-  }
+  const { id } = req.query
+  const userId = session.user.id
 
-  // Rate limiting for write methods
-  if (process.env.NODE_ENV !== 'test' && req.method !== 'GET') {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
-    const success = await checkRateLimit(ip as string)
-    if (!success) {
-      return res.status(429).json({ error: 'Too many requests' })
-    }
-  }
-
-  switch (req.method) {
-    case 'GET':
-      return getQuery(req, res, id)
-    case 'PATCH':
-      return updateQuery(req, res, id)
-    case 'DELETE':
-      return deleteQuery(req, res, id)
-    default:
-      res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-}
-
-async function getQuery(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const query = await prisma.query.findUnique({ where: { id } })
-    if (!query) {
-      return res.status(404).json({ error: 'Query not found' })
-    }
+  // GET /api/queries/[id]
+  if (req.method === 'GET') {
+    const query = await prisma.savedQuery.findFirst({
+      where: { id: String(id), userId },
+    })
+    if (!query) return res.status(404).json({ error: 'Not found' })
     return res.status(200).json(query)
-  } catch (error) {
-    console.error('Error fetching query:', error)
-    return res.status(500).json({ error: 'Failed to fetch query' })
   }
-}
 
-async function updateQuery(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const body = updateQuerySchema.parse(req.body)
-    const session = await auth()
-    const userId = session?.user?.id ?? 'anonymous'
+  // PATCH /api/queries/[id]
+  if (req.method === 'PATCH') {
+    const { name, filters, sortBy, groupBy, displayMode, isDefault } = req.body
 
-    // If setting as default, unset other defaults first
-    if (body.isDefault) {
-      await prisma.query.updateMany({
-        where: { userId, isDefault: true, id: { not: id } },
+    // If isDefault=true, unset other defaults first
+    if (isDefault) {
+      const existing = await prisma.savedQuery.findFirst({ where: { id: String(id), userId } })
+      await prisma.savedQuery.updateMany({
+        where: {
+          userId,
+          projectId: existing?.projectId ?? null,
+          id: { not: String(id) },
+        },
         data: { isDefault: false },
       })
     }
 
-    const query = await prisma.query.update({
-      where: { id },
-      data: body,
+    await prisma.savedQuery.updateMany({
+      where: { id: String(id), userId },
+      data: {
+        ...(name !== undefined ? { name: name.trim() } : {}),
+        ...(filters !== undefined ? { filters } : {}),
+        ...(sortBy !== undefined ? { sortBy } : {}),
+        ...(groupBy !== undefined ? { groupBy } : {}),
+        ...(displayMode !== undefined ? { displayMode } : {}),
+        ...(isDefault !== undefined ? { isDefault } : {}),
+      },
     })
-
-    return res.status(200).json(query)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
-    }
-    console.error('Error updating query:', error)
-    return res.status(500).json({ error: 'Failed to update query' })
+    const updated = await prisma.savedQuery.findFirst({ where: { id: String(id) } })
+    if (!updated) return res.status(404).json({ error: 'Not found' })
+    return res.status(200).json(updated)
   }
-}
 
-async function deleteQuery(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    await prisma.query.delete({ where: { id } })
+  // DELETE /api/queries/[id]
+  if (req.method === 'DELETE') {
+    await prisma.savedQuery.deleteMany({ where: { id: String(id), userId } })
     return res.status(204).end()
-  } catch (error) {
-    console.error('Error deleting query:', error)
-    return res.status(500).json({ error: 'Failed to delete query' })
   }
+
+  return res.status(405).json({ error: 'Method not allowed' })
 }

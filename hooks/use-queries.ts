@@ -1,108 +1,111 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type { Query, WorkPackageFilter, SortBy } from '@/types'
-import { queryKeys } from '@/queries/queryKeys'
 
-// ─── Input types ─────────────────────────────────────────────────────────────
+// ─── Query Keys ─────────────────────────────────────────────────────────────────
 
-export interface CreateQueryInput {
-  projectId?: string | null
+export const queryKeys = {
+  allSavedQueries: (projectId?: string) =>
+    ['savedQueries', projectId ?? 'all'] as const,
+  savedQuery: (id: string) => ['savedQueries', id] as const,
+}
+
+// ─── Fetchers ──────────────────────────────────────────────────────────────────
+
+async function fetchSavedQueries(projectId?: string): Promise<Query[]> {
+  const url = projectId ? `/api/queries?projectId=${projectId}` : '/api/queries'
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Failed to fetch saved queries')
+  return res.json()
+}
+
+async function createSavedQuery(data: {
   name: string
+  projectId?: string
   filters: WorkPackageFilter
   sortBy: SortBy[]
   groupBy?: string | null
-  displayMode?: 'table' | 'gantt' | 'board' | 'calendar'
+  displayMode: string
   isDefault?: boolean
+}): Promise<Query> {
+  const res = await fetch('/api/queries', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to create saved query')
+  return res.json()
 }
 
-export interface UpdateQueryInput {
-  name?: string
-  filters?: WorkPackageFilter
-  sortBy?: SortBy[]
-  groupBy?: string | null
-  displayMode?: 'table' | 'gantt' | 'board' | 'calendar'
-  isDefault?: boolean
+async function updateSavedQuery(
+  id: string,
+  data: Partial<{
+    name: string
+    filters: WorkPackageFilter
+    sortBy: SortBy[]
+    groupBy: string | null
+    displayMode: string
+    isDefault: boolean
+  }>
+): Promise<Query> {
+  const res = await fetch(`/api/queries/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to update saved query')
+  return res.json()
 }
 
-// ─── Hooks ────────────────────────────────────────────────────────────────────
+async function deleteSavedQuery(id: string): Promise<void> {
+  const res = await fetch(`/api/queries/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete saved query')
+}
 
-/** List saved queries, optionally scoped to a project */
+// ─── Hooks ─────────────────────────────────────────────────────────────────────
+
 export function useSavedQueries(projectId?: string) {
   return useQuery({
-    queryKey: queryKeys.queries(projectId),
-    queryFn: async (): Promise<Query[]> => {
-      const url = projectId ? `/api/queries?projectId=${projectId}` : '/api/queries'
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('Failed to fetch queries')
-      return res.json()
-    },
+    queryKey: queryKeys.allSavedQueries(projectId),
+    queryFn: () => fetchSavedQueries(projectId),
   })
 }
 
-/** Fetch a single saved query by id */
-export function useQueryById(id: string | undefined) {
+export function useSavedQuery(id: string) {
   return useQuery({
-    queryKey: queryKeys.query(id ?? ''),
-    queryFn: async (): Promise<Query> => {
-      const res = await fetch(`/api/queries/${id}`)
-      if (!res.ok) throw new Error('Failed to fetch query')
-      return res.json()
-    },
+    queryKey: queryKeys.savedQuery(id),
+    queryFn: () => fetch(`/api/queries/${id}`).then((r) => r.json()),
     enabled: !!id,
   })
 }
 
-/** Create a new saved query */
-export function useCreateQuery() {
+export function useCreateSavedQuery() {
   const queryClient = useQueryClient()
-
   return useMutation({
-    mutationFn: async (data: CreateQueryInput) => {
-      const res = await fetch('/api/queries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to create query')
-      return res.json()
-    },
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.queries(vars.projectId ?? undefined) })
+    mutationFn: createSavedQuery,
+    onSuccess: (_, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.allSavedQueries(variables.projectId) })
     },
   })
 }
 
-/** Update a saved query */
-export function useUpdateQuery() {
+export function useUpdateSavedQuery() {
   const queryClient = useQueryClient()
-
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: UpdateQueryInput }) => {
-      const res = await fetch(`/api/queries/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to update query')
-      return res.json()
-    },
+    mutationFn: ({ id, data }: { id: string; data: Parameters<typeof updateSavedQuery>[1] }) =>
+      updateSavedQuery(id, data),
     onSuccess: (updated) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.query(updated.id) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.queries() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.allSavedQueries() })
+      void queryClient.setQueryData(queryKeys.savedQuery(updated.id), updated)
     },
   })
 }
 
-/** Delete a saved query */
-export function useDeleteQuery() {
+export function useDeleteSavedQuery() {
   const queryClient = useQueryClient()
-
   return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/queries/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete query')
-    },
+    mutationFn: deleteSavedQuery,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.queries() })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.allSavedQueries() })
     },
   })
 }

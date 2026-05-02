@@ -119,8 +119,24 @@ export interface Activity {
   id: string
   workPackageId: string
   userId: string
+  user?: { id: string; name: string; email: string; avatarUrl: string | null }
   action: 'created' | 'updated' | 'commented'
+  comment?: string | null  // rendered comment text
   details?: Record<string, unknown> | null
+  createdAt: Date
+}
+
+export interface Relation {
+  id: string
+  sourceWorkPackageId: string
+  targetWorkPackageId: string
+  type: string
+  targetWorkPackage?: {
+    id: string
+    subject: string
+    type?: { id: string; name: string; color: string }
+    status?: { id: string; name: string; color: string }
+  } | null
   createdAt: Date
 }
 

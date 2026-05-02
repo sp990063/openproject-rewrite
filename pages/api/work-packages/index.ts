@@ -16,7 +16,15 @@ const createWorkPackageSchema = z.object({
   dueDate: z.string().datetime().optional(),
   estimatedHours: z.number().positive().optional(),
   parentId: z.string().cuid().optional(),
-})
+}).refine(
+  (data) => {
+    if (data.startDate && data.dueDate) {
+      return new Date(data.startDate) <= new Date(data.dueDate)
+    }
+    return true
+  },
+  { message: 'dueDate must be >= startDate', path: ['dueDate'] }
+)
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // Rate limiting for write methods (skip in test environment)

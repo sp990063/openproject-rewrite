@@ -2,8 +2,6 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import type {
   WorkPackage,
   WorkPackageFilter,
-  UpdateWorkPackageInput,
-  CreateWorkPackageInput,
 } from '@/types'
 import { queryKeys } from '@/queries/queryKeys'
 
@@ -14,8 +12,8 @@ export interface CreateWorkPackageInput {
   subject: string
   description?: string
   statusId: string
-  typeId: string
-  priorityId: string
+  typeId?: string    // optional — API defaults to project default type
+  priorityId?: string // optional — API defaults to default priority
   assigneeId?: string
   startDate?: string
   dueDate?: string
@@ -148,7 +146,7 @@ export function useUpdateWorkPackage() {
 
       // Optimistically apply the update (only spread changed fields)
       queryClient.setQueryData<WorkPackage>(queryKeys.workPackage(id), (old) =>
-        old ? { ...old, ...data } : old
+        old ? ({ ...old, ...data } as WorkPackage) : old
       )
 
       return { previousWp }
@@ -255,3 +253,128 @@ export function useReorderWorkPackage() {
     },
   })
 }
+
+// ─── Query Management ─────────────────────────────────────────────────────────
+
+export interface CreateQueryInput {
+  name: string
+  projectId?: string
+  filters: WorkPackageFilter
+  sortBy: [string, 'asc' | 'desc'][]
+  groupBy?: string
+  displayMode: 'table' | 'gantt' | 'board' | 'calendar'
+  isDefault?: boolean
+}
+
+export interface UpdateQueryInput {
+  name?: string
+  filters?: WorkPackageFilter
+  sortBy?: [string, 'asc' | 'desc'][]
+  groupBy?: string | null
+  displayMode?: 'table' | 'gantt' | 'board' | 'calendar'
+  isDefault?: boolean
+}
+
+/** List saved queries for the current user, optionally scoped to a project */
+export function useSavedQueries(projectId?: string) {
+  return useQuery({
+    queryKey: queryKeys.queries(projectId),
+    queryFn: async () => {
+      const params = new URLSearchParams()
+      if (projectId) params.set('projectId', projectId)
+      const url = `/api/queries${params.size ? `?${params}` : ''}`
+      const res = await fetch(url)
+      if (!res.ok) throw new Error('Failed to fetch saved queries')
+      return res.json()
+    },
+  })
+}
+
+/** Fetch a single saved query by id */
+export function useQueryById(id: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.query(id ?? ''),
+    queryFn: async () => {
+      const res = await fetch(`/api/queries/${id}`)
+      if (!res.ok) throw new Error('Failed to fetch query')
+      return res.json()
+    },
+    enabled: !!id,
+  })
+}
+
+/** Create a new saved query */
+export function useCreateQuery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (data: CreateQueryInput) => {
+      const res = await fetch('/api/queries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed to create query')
+      return res.json()
+    },
+    onSuccess: (_data, vars) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.queries(vars.projectId) })
+    },
+  })
+}
+
+/** Update an existing saved query */
+export function useUpdateQuery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: UpdateQueryInput }) => {
+      const res = await fetch(`/api/queries/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      })
+      if (!res.ok) throw new Error('Failed to update query')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queries'] })
+    },
+  })
+}
+
+/** Delete a saved query */
+export function useDeleteQuery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/queries/${id}`, { method: 'DELETE' })
+      if (!res.ok) throw new Error('Failed to delete query')
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queries'] })
+    },
+  })
+}
+
+/** Set a query as the default for its project */
+export function useSetDefaultQuery() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (id: string) => {
+      const res = await fetch(`/api/queries/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isDefault: true }),
+      })
+      if (!res.ok) throw new Error('Failed to set default query')
+      return res.json()
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['queries'] })
+    },
+  })
+}
+
