@@ -50,7 +50,7 @@ async function validatePassword(inputPassword: string, user: {
   return bcrypt.compare(inputPassword, user.passwordHash);
 }
 
-export const { handlers, signIn, signOut, auth } = NextAuth({
+export const authOptions = {
   adapter: PrismaAdapter(prisma),
   providers: [
     CredentialsProvider({
@@ -123,4 +123,6 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
       return session
     },
   },
-})
+}
+
+export default NextAuth(authOptions)

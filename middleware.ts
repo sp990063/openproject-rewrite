@@ -1,28 +1,36 @@
-import { auth } from '@/lib/auth'
 import { NextResponse } from 'next/server'
+import { getToken } from 'next-auth/jwt'
+import type { NextRequest } from 'next'
 
-export default auth((req) => {
-  const isLoggedIn = !!req.auth
-  const isOnProtectedRoute =
-    req.nextUrl.pathname.startsWith('/dashboard') ||
-    req.nextUrl.pathname.startsWith('/projects')
-  const isOnAuthRoute = req.nextUrl.pathname.startsWith('/login')
+export const runtime = 'nodejs'
 
-  // Redirect logged-in users away from auth pages
+export async function middleware(req: NextRequest) {
+  // Use getToken from next-auth/jwt (not the full auth() wrapper)
+  // This avoids triggering @auth/core's internal page rendering in middleware
+  const token = await getToken({
+    req,
+    secret: process.env.NEXTAUTH_SECRET,
+  })
+
+  const isLoggedIn = !!token
+  const pathname = req.nextUrl.pathname
+  const isOnProtectedRoute = pathname.startsWith('/dashboard') || pathname.startsWith('/projects')
+  const isOnAuthRoute = pathname.startsWith('/login')
+
   if (isOnAuthRoute && isLoggedIn) {
     return NextResponse.redirect(new URL('/dashboard', req.url))
   }
 
-  // Redirect unauthenticated users to login
   if (isOnProtectedRoute && !isLoggedIn) {
     const loginUrl = new URL('/login', req.url)
-    loginUrl.searchParams.set('callbackUrl', req.nextUrl.pathname)
+    loginUrl.searchParams.set('callbackUrl', pathname)
     return NextResponse.redirect(loginUrl)
   }
 
   return NextResponse.next()
-})
+}
 
 export const config = {
-  matcher: ['/dashboard/:path*', '/projects/:path*', '/login'],
+  // Exclude /api/auth/* from middleware so NextAuth handlers run without middleware interference
+  matcher: ['/dashboard/:path*', '/projects/:path*', '/login', '/((?!api/auth).*)'],
 }
