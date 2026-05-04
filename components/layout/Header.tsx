@@ -15,9 +15,15 @@ export function Header() {
 
   return (
     <header className="h-16 bg-white border-b border-gray-200 px-6 flex items-center justify-between">
-      <div className="flex items-center gap-8">
-        <Link href="/dashboard" className="text-xl font-bold text-blue-600">
-          OpenProject
+      <div className="flex items-center gap-3">
+        <Link href="/dashboard" className="flex items-center gap-2">
+          {/* Logo SVG */}
+          <svg width="32" height="32" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="flex-shrink-0">
+            <rect width="40" height="40" rx="8" fill="#3b82f6"/>
+            <path d="M10 28L20 12L30 28H10Z" fill="white" fill-opacity="0.9"/>
+            <circle cx="20" cy="22" r="3" fill="#3b82f6"/>
+          </svg>
+          <span className="text-xl font-bold text-gray-900">OpenProject</span>
         </Link>
       </div>
 

@@ -36,11 +36,43 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        <div className="text-center">
-          <h1 className="text-3xl font-extrabold text-gray-900">OpenProject</h1>
-          <h2 className="mt-6 text-2xl font-bold text-gray-900">Sign in to your account</h2>
+    <div className="min-h-screen bg-gray-50 flex">
+      {/* Left branding panel */}
+      <div className="hidden lg:flex lg:w-1/2 bg-blue-600 flex-col items-center justify-center p-12">
+        <div className="max-w-md text-center">
+          {/* Logo */}
+          <svg width="64" height="64" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" className="mx-auto mb-6">
+            <rect width="40" height="40" rx="8" fill="white" fillOpacity="0.2"/>
+            <path d="M10 28L20 12L30 28H10Z" fill="white" fillOpacity="0.9"/>
+            <circle cx="20" cy="22" r="3" fill="#3b82f6"/>
+          </svg>
+          <h1 className="text-3xl font-bold text-white mb-4">OpenProject</h1>
+          <p className="text-blue-100 text-lg mb-8">
+            Modern, fast, and intuitive project management for teams of all sizes.
+          </p>
+          <div className="grid grid-cols-2 gap-4 text-left">
+            {[
+              { label: 'Tasks & Bugs', desc: 'Track work' },
+              { label: 'Gantt Charts', desc: 'Plan timelines' },
+              { label: 'Team Boards', desc: 'Visual workflow' },
+              { label: 'Calendars', desc: 'Schedule events' },
+            ].map((f) => (
+              <div key={f.label} className="bg-white/10 rounded-lg p-3">
+                <p className="text-white font-medium text-sm">{f.label}</p>
+                <p className="text-blue-200 text-xs">{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Right login form */}
+      <div className="flex-1 flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full space-y-8">
+          <div className="text-center lg:text-left">
+            <h1 className="text-3xl font-extrabold text-gray-900">OpenProject</h1>
+            <h2 className="mt-6 text-2xl font-bold text-gray-900">Sign in to your account</h2>
+          </div>
         </div>
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
@@ -70,6 +102,19 @@ export default function LoginPage() {
               required
               autoComplete="current-password"
             />
+          </div>
+
+          <div className="flex items-center justify-between">
+            <label className="flex items-center gap-2 text-sm text-gray-600">
+              <input
+                type="checkbox"
+                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+              />
+              Remember me
+            </label>
+            <Link href="/forgot-password" className="text-sm text-blue-600 hover:text-blue-500">
+              Forgot password?
+            </Link>
           </div>
 
           <Button type="submit" variant="primary" size="lg" isLoading={isLoading} className="w-full">

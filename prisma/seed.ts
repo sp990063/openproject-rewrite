@@ -177,6 +177,11 @@ async function main() {
   const normalPriority = await prisma.priority.findUnique({ where: { name: 'Normal' } })
   const highPriority = await prisma.priority.findUnique({ where: { name: 'High' } })
 
+  // Clear existing work packages for demo project to prevent duplicates on re-seed
+  await prisma.workPackage.deleteMany({
+    where: { projectId: demoProject.id },
+  })
+
   const workPackages = [
     {
       subject: 'Set up project infrastructure',

@@ -13,6 +13,8 @@ interface NavItem {
 const mainNavItems: NavItem[] = [
   { label: 'Dashboard', href: '/dashboard' },
   { label: 'Projects', href: '/projects' },
+  { label: 'Work Packages', href: '/work-packages' },
+  { label: 'Members', href: '/members' },
 ]
 
 export function Sidebar() {
