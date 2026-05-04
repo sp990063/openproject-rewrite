@@ -73,9 +73,8 @@ export default function LoginPage() {
             <h1 className="text-3xl font-extrabold text-gray-900">OpenProject</h1>
             <h2 className="mt-6 text-2xl font-bold text-gray-900">Sign in to your account</h2>
           </div>
-        </div>
 
-        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg text-sm">
               {error}
@@ -128,6 +127,7 @@ export default function LoginPage() {
             </Link>
           </div>
         </form>
+        </div>
       </div>
     </div>
   )
