@@ -1,28 +1,76 @@
-import React, { useState } from 'react'
+import React, { useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
-import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
-import { useWorkPackages, useCreateWorkPackage } from '@/hooks/use-work-packages'
-import { Button, Badge, Modal, Input, Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui'
 import Link from 'next/link'
-import { formatDate } from '@/lib/utils'
-import type { WorkPackageFilter } from '@/types'
+import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
+import { Button, Modal, Input } from '@/components/ui'
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
+import { useCreateWorkPackage } from '@/hooks/use-work-packages'
+import { WorkPackageTable } from '@/components/work-packages/table'
+import { GanttChart } from '@/components/work-packages/gantt'
+import { WorkPackageBoard } from '@/components/work-packages/board'
+import { WorkPackageCalendar } from '@/components/work-packages/calendar'
+import { QuerySwitcher } from '@/components/work-packages/query/QuerySwitcher'
+import { SaveQueryDialog } from '@/components/work-packages/query/SaveQueryDialog'
+import type { WorkPackageFilter, Query, SortBy } from '@/types'
+import type { SortState } from '@/components/work-packages/table/types'
 
 export const dynamic = 'force-dynamic'
+
+type ViewMode = 'table' | 'gantt' | 'board' | 'calendar'
+
+const VIEW_MODES: { value: ViewMode; label: string }[] = [
+  { value: 'table', label: 'Table' },
+  { value: 'gantt', label: 'Gantt' },
+  { value: 'board', label: 'Board' },
+  { value: 'calendar', label: 'Calendar' },
+]
 
 export default function WorkPackagesPage() {
   const router = useRouter()
   const { projectId } = router.query
 
-  const filters: WorkPackageFilter = { projectId: projectId as string | undefined }
-  const { workPackages } = useWorkPackages(filters)
-  const createWorkPackage = useCreateWorkPackage()
+  // ── View mode (persisted in URL) ─────────────────────────────────────────────
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const v = router.query.view as string | undefined
+    if (VIEW_MODES.some((m) => m.value === v)) return v as ViewMode
+    return 'table'
+  })
 
+  // ── Query (saved filter) state ───────────────────────────────────────────────
+  const [currentQuery, setCurrentQuery] = useState<Query | null>(null)
+  const [filters, setFilters] = useState<Partial<WorkPackageFilter>>(() => ({
+    projectId: projectId as string | undefined,
+  }))
+  const [sort] = useState<SortState | null>(null)
+  const [groupBy] = useState<string | null>(null)
+  const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
+
+  // ── Create Work Package modal ─────────────────────────────────────────────────
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newWPSubject, setNewWPSubject] = useState('')
   const [newWPDescription, setNewWPDescription] = useState('')
+  const createWorkPackage = useCreateWorkPackage()
 
-  const projectWorkPackages = workPackages.data || []
+  // ── Sync view mode to URL ─────────────────────────────────────────────────────
+  const handleViewChange = useCallback((mode: ViewMode) => {
+    setViewMode(mode)
+    const query: Record<string, string> = {}
+    if (mode !== 'table') query.view = mode
+    if (currentQuery) query.queryId = currentQuery.id
+    router.replace({ pathname: router.pathname, query }, undefined, { shallow: true })
+  }, [router, currentQuery])
 
+  // ── Query selection ────────────────────────────────────────────────────────────
+  const handleSelectQuery = useCallback((query: Query | null) => {
+    setCurrentQuery(query)
+    if (query?.filters) {
+      setFilters({ ...query.filters, projectId: projectId as string })
+    } else {
+      setFilters({ projectId: projectId as string })
+    }
+  }, [projectId])
+
+  // ── Create Work Package ────────────────────────────────────────────────────────
   const handleCreateWP = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!projectId) return
@@ -35,7 +83,7 @@ export default function WorkPackagesPage() {
         statusId: 'status-new',
         typeId: 'task',
         priorityId: 'normal',
-        authorId: 'system', // TODO: Get from session
+        authorId: 'system',
       })
       setIsCreateModalOpen(false)
       setNewWPSubject('')
@@ -45,72 +93,86 @@ export default function WorkPackagesPage() {
     }
   }
 
-  const getStatusColor = (status: { color?: string; name?: string }) => {
-    return status.color || '#666'
+  const resolvedFilters: WorkPackageFilter = {
+    ...filters as WorkPackageFilter,
+    projectId: projectId as string | undefined,
   }
+
+  const sortBy: SortBy[] = sort ? [[sort.columnId as string, sort.direction]] : []
 
   return (
     <AuthenticatedLayout>
-      <div className="max-w-7xl mx-auto">
-        <div className="mb-6">
-          <Link href={`/projects/${projectId}`} className="text-sm text-gray-500 hover:text-gray-700">
-            ← Back to Project
-          </Link>
-        </div>
-
-        <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Work Packages</h1>
-          <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
-            New Work Package
-          </Button>
-        </div>
-
-        {workPackages.isLoading ? (
-          <div className="text-center py-12 text-gray-500">Loading...</div>
-        ) : projectWorkPackages.length > 0 ? (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Subject</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Priority</TableHead>
-                  <TableHead>Assignee</TableHead>
-                  <TableHead>Due Date</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {projectWorkPackages.map((wp) => (
-                  <TableRow key={wp.id}>
-                    <TableCell className="font-medium">{wp.subject}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={wp.status?.isClosed ? 'default' : 'info'}
-                        style={{ backgroundColor: getStatusColor(wp.status || {}) + '20', color: getStatusColor(wp.status || {}) }}
-                      >
-                        {wp.status?.name}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>{wp.type?.name}</TableCell>
-                    <TableCell>{wp.priority?.name}</TableCell>
-                    <TableCell>{wp.assignee?.name || 'Unassigned'}</TableCell>
-                    <TableCell>{wp.dueDate ? formatDate(wp.dueDate) : 'No date'}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-12 text-center">
-            <p className="text-gray-500 mb-4">No work packages yet</p>
+      <div className="flex flex-col h-[calc(100vh-4rem)]">
+        {/* Header */}
+        <div className="bg-white border-b border-gray-200 px-6 py-4 flex-shrink-0">
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <Link
+                href={`/projects/${projectId}`}
+                className="text-sm text-gray-500 hover:text-gray-700"
+              >
+                ← Back to Project
+              </Link>
+              <h1 className="text-2xl font-bold text-gray-900">Work Packages</h1>
+            </div>
             <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
-              Create your first work package
+              New Work Package
             </Button>
           </div>
-        )}
+
+          {/* Toolbar: Query Switcher + View Switcher */}
+          <div className="flex items-center justify-between gap-4">
+            <QuerySwitcher
+              projectId={projectId as string}
+              currentQueryId={currentQuery?.id}
+              onSelectQuery={handleSelectQuery}
+              onSaveQuery={() => setIsSaveDialogOpen(true)}
+            />
+
+            <Tabs value={viewMode} onValueChange={(v) => handleViewChange(v as ViewMode)}>
+              <TabsList>
+                {VIEW_MODES.map((mode) => (
+                  <TabsTrigger key={mode.value} value={mode.value}>
+                    {mode.label}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </Tabs>
+          </div>
+        </div>
+
+        {/* View Content — all four views live here but only one is visible */}
+        {/* (Using CSS display instead of TabsContent to avoid Radix TabsContent child requirement) */}
+        <div className="flex-1 overflow-hidden relative">
+          <div className={viewMode === 'table' ? 'block' : 'hidden'} style={{ height: '100%' }}>
+            <WorkPackageTable
+              initialFilters={resolvedFilters}
+              initialSort={sort}
+              projectId={projectId as string}
+            />
+          </div>
+          <div className={viewMode === 'gantt' ? 'block' : 'hidden'} style={{ height: '100%' }}>
+            <GanttChart
+              initialFilters={resolvedFilters}
+              projectId={projectId as string}
+            />
+          </div>
+          <div className={viewMode === 'board' ? 'block' : 'hidden'} style={{ height: '100%' }}>
+            <WorkPackageBoard
+              initialFilters={resolvedFilters}
+              projectId={projectId as string}
+            />
+          </div>
+          <div className={viewMode === 'calendar' ? 'block' : 'hidden'} style={{ height: '100%' }}>
+            <WorkPackageCalendar
+              initialFilters={resolvedFilters}
+              projectId={projectId as string}
+            />
+          </div>
+        </div>
       </div>
 
+      {/* Create Work Package Modal */}
       <Modal
         open={isCreateModalOpen}
         onOpenChange={setIsCreateModalOpen}
@@ -132,15 +194,38 @@ export default function WorkPackagesPage() {
             placeholder="Optional description"
           />
           <div className="flex justify-end gap-3 mt-6">
-            <Button variant="secondary" type="button" onClick={() => setIsCreateModalOpen(false)}>
+            <Button
+              variant="secondary"
+              type="button"
+              onClick={() => setIsCreateModalOpen(false)}
+            >
               Cancel
             </Button>
-            <Button variant="primary" type="submit" isLoading={createWorkPackage.isPending}>
+            <Button
+              variant="primary"
+              type="submit"
+              isLoading={createWorkPackage.isPending}
+            >
               Create
             </Button>
           </div>
         </form>
       </Modal>
+
+      {/* Save Query Dialog */}
+      <SaveQueryDialog
+        open={isSaveDialogOpen}
+        onOpenChange={setIsSaveDialogOpen}
+        currentFilters={filters as WorkPackageFilter}
+        currentSortBy={sortBy}
+        currentGroupBy={groupBy}
+        displayMode={viewMode}
+        projectId={projectId as string}
+        editingQuery={undefined}
+        onSaved={(query) => {
+          setCurrentQuery(query)
+        }}
+      />
     </AuthenticatedLayout>
   )
 }
