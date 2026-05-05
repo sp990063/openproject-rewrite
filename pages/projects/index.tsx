@@ -101,8 +101,9 @@ export default function ProjectsPage() {
                       {project.members?.length || 0}
                     </td>
                     <td className="px-6 py-4 text-sm text-gray-500">
-                      {(project as Record<string, unknown>)._count &&
-                        ((project as Record<string, { _count: { workPackages: number } }>)._count?.workPackages || 0)}
+                      {'_count' in project && typeof project._count === 'object' && project._count !== null
+                        ? (project._count as { workPackages?: number })?.workPackages ?? 0
+                        : 0}
                     </td>
                     <td className="px-6 py-4 text-right">
                       <Link href={`/projects/${project.id}/work-packages`}>

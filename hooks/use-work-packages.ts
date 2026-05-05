@@ -15,6 +15,7 @@ export interface CreateWorkPackageInput {
   typeId?: string    // optional — API defaults to project default type
   priorityId?: string // optional — API defaults to default priority
   assigneeId?: string
+  authorId?: string  // optional — API defaults to current user
   startDate?: string
   dueDate?: string
   estimatedHours?: number

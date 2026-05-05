@@ -86,8 +86,9 @@ export default function ProjectOverviewPage() {
           >
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Work Packages</h3>
             <p className="text-3xl font-bold text-blue-600">
-              {(project as Record<string, unknown>)._count &&
-                ((project as Record<string, { _count: { workPackages: number } }>)._count?.workPackages || 0)}
+              {'_count' in project && typeof project._count === 'object' && project._count !== null
+                ? (project._count as { workPackages?: number })?.workPackages ?? 0
+                : 0}
             </p>
             <p className="text-gray-500 text-sm mt-1">View and manage tasks</p>
           </Link>
