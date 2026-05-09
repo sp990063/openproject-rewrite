@@ -358,6 +358,8 @@
 
 ![內聯編輯](images-manual/04-wp-inline-edit.png)
 
+> 📝 **提示：** 雙擊儲存格後，編輯器即時響應；按 Enter 保存，Escape 取消。
+
 ---
 
 ## 10. 甘特圖視圖
@@ -366,22 +368,18 @@
 
 ![甘特圖](images-manual/05-gantt.png)
 
-**時間軸顯示**
-- 橫軸為時間（日期/星期/月/季度）
-- 每個工作包以橫條顯示，起止日期決定長度
+**時間縮放**
 
-**縮放控制**
+|| 按鈕 | 功能 |
+||------|------|
+|| Month | 月視圖（默認） |
+|| Week | 週視圖（更精細） |
 
-| 按鈕 | 功能 |
-|------|------|
-| Zoom In | 放大（每天像素增加） |
-| Zoom Out | 縮小（每天像素減少） |
-
-![甘特圖放大](images-manual/05-gantt-zoom-in.png)
-
-**向右滾動查看更多時間線：**
+時間軸顯示橫軸為日期，每個工作包以橫條顯示，起止日期決定長度。
 
 ![甘特圖滾動](images-manual/05-gantt-scrolled.png)
+
+**向右滾動** — 可查看更遠的時間線規劃。
 
 **今日線** — 紅色垂直線標示今天的日期位置
 
@@ -420,12 +418,6 @@
 每列底部有固定疊加層「＋ Add card」，點擊直接輸入主題快速建立新工作包：
 
 ![新增卡片](images-manual/06-board-add-card.png)
-
-**卡片懸停**
-
-滑鼠懸停在卡片上時，該卡片高亮顯示：
-
-![卡片懸停](images-manual/06-board-card-hover.png)
 
 ---
 
@@ -495,30 +487,28 @@
 
 ![Relations](images-manual/08-wp-detail-relations.png)
 
-**添加關係對話框**
+**添加關係**
 
-點擊 **Add Relation** 按鈕：
-
-![添加關係](images-manual/08-wp-detail-add-relation.png)
+點擊 **Add Relation** 按鈕即可為工作包添加關係。
 
 支援關係類型：Blocks、Blocked by、Precedes、Follows、Relates to
 
 **右側屬性面板（Attribute Sidebar）**
 
-| 屬性 | 可編輯？ | 說明 |
-|------|---------|------|
-| Status | ✅ 可編輯 | 下拉選擇狀態 |
-| Type | ✅ 可編輯 | Task / Bug / Feature / Milestone |
-| Priority | ✅ 可編輯 | Low / Normal / High |
-| Assignee | ✅ 可編輯 | 選擇團隊成員 |
-| Author | ❌ 只讀 | 建立者 |
-| Start Date | ✅ 可編輯 | 日期選擇器 |
-| Due Date | ✅ 可編輯 | 日期選擇器 |
-| Estimated Hours | ✅ 可編輯 | 數字輸入（0.25 為一單位） |
-| Created | ❌ 只讀 | 建立時間 |
-| Updated | ❌ 只讀 | 最後更新時間 |
+|| 屬性 | 可編輯？ | 說明 |
+||------|---------|------|
+|| Status | ✅ 可編輯 | 下拉選擇狀態 |
+|| Type | ✅ 可編輯 | Task / Bug / Feature / Milestone |
+|| Priority | ✅ 可編輯 | Low / Normal / High |
+|| Assignee | ✅ 可編輯 | 選擇團隊成員 |
+|| Author | ❌ 只讀 | 建立者 |
+|| Start Date | ✅ 可編輯 | 日期選擇器 |
+|| Due Date | ✅ 可編輯 | 日期選擇器 |
+|| Estimated Hours | ✅ 可編輯 | 數字輸入（0.25 為一單位） |
+|| Created | ❌ 只讀 | 建立時間 |
+|| Updated | ❌ 只讀 | 最後更新時間 |
 
-![屬性面板](images-manual/08-wp-detail-attributes.png)
+![工作包詳情](images-manual/08-wp-detail-full.png)
 
 ---
 
@@ -559,12 +549,7 @@
 **操作按鈕**
 - **New Thread** — 發表新主題
 
-**創建討論串對話框**
-
-![新建討論串對話框](images-manual/09-new-thread-dialog.png)
-
-- **Subject** — 主題標題（必填）
-- **Cancel** / **Create** 按鈕
+點擊 **New Thread** 按鈕，彈出創建對話框，可輸入主題標題後建立討論串。
 
 **討論串表格**
 
@@ -583,11 +568,9 @@
 
 顯示主題內容、發表人信息、創建時間，以及所有回覆。
 
-**回覆對話框**
+**回覆功能**
 
-點擊 **Reply** 按鈕：
-
-![回覆對話框](images-manual/09-reply-dialog.png)
+點擊 **Reply** 按鈕即可回覆該討論串。
 
 ---
 
@@ -636,9 +619,9 @@
 
 **編輯模式**
 
-點擊 **Edit** 按鈕：
+點擊 **Edit** 按鈕即可進入編輯模式：
 
-![維基編輯模式](images-manual/10-wiki-edit.png)
+![維基編輯模式](images-manual/10-wiki-edit-attempt.png)
 
 **內容區塊**
 - **檢視模式：** Markdown 渲染後的 HTML
