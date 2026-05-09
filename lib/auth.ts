@@ -1,8 +1,10 @@
 import NextAuth, { type DefaultSession, type Session } from 'next-auth'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import CredentialsProvider from 'next-auth/providers/credentials'
+import GoogleProvider from 'next-auth/providers/google'
+import GitHubProvider from 'next-auth/providers/github'
 import { prisma } from './prisma'
-import bcrypt from 'bcryptjs'
+import * as bcrypt from 'bcryptjs'
 
 // Extend NextAuth types to include user.id, isSystemAdmin, passwordMigrationRequired in session
 declare module 'next-auth' {
@@ -51,8 +53,16 @@ async function validatePassword(inputPassword: string, user: {
 }
 
 export const authOptions = {
-  adapter: PrismaAdapter(prisma),
+  adapter: PrismaAdapter(prisma) as ReturnType<typeof PrismaAdapter>,
   providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID ?? '',
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? '',
+    }),
+    GitHubProvider({
+      clientId: process.env.GITHUB_CLIENT_ID ?? '',
+      clientSecret: process.env.GITHUB_CLIENT_SECRET ?? '',
+    }),
     CredentialsProvider({
       name: 'credentials',
       credentials: {
@@ -100,7 +110,11 @@ export const authOptions = {
     signIn: '/login',
   },
   callbacks: {
-    async jwt({ token, user }: { token: Record<string, unknown>; user?: unknown }) {
+    async jwt({ token, user, account }: {
+      token: Record<string, unknown>;
+      user?: unknown;
+      account?: { provider?: string } | null;
+    }) {
       if (user) {
         token.id = (user as { id: string }).id
         // L2/S2 FIX: persist admin + migration flags to token
@@ -109,6 +123,10 @@ export const authOptions = {
           token.passwordMigrationRequired = dbUser.passwordMigrationRequired
           token.isSystemAdmin = dbUser.isSystemAdmin
         }
+      }
+      // Track OAuth provider in token for account linking
+      if (account?.provider) {
+        token.oauthProvider = account.provider
       }
       return token
     },
