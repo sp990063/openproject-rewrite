@@ -225,3 +225,33 @@ export interface ProjectWipLimit {
   statusId: string
   limit: number | null
 }
+
+// ─── Phase 4: Wiki Types ────────────────────────────────────────────────────
+
+export interface WikiPage {
+  id: string
+  projectId: string
+  title: string
+  slug: string
+  content: string
+  parentId: string | null
+  authorId: string
+  version: number
+  createdAt: Date
+  updatedAt: Date
+  project?: Project
+  author?: { id: string; name: string; email: string; avatarUrl: string | null }
+  parent?: WikiPage | null
+  children?: WikiPage[]
+  versions?: WikiPageVersion[]
+}
+
+export interface WikiPageVersion {
+  id: string
+  wikiPageId: string
+  content: string
+  authorId: string
+  version: number
+  createdAt: Date
+  author?: { id: string; name: string; email: string; avatarUrl: string | null }
+}
