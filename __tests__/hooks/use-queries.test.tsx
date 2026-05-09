@@ -1,50 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { act } from 'react-dom/test-utils'
 import { renderHook, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import React from 'react'
 
-// ─── Mock the hooks module entirely ─────────────────────────────────────────────
-// We replace the entire hooks module with controlled mock functions,
-// then verify that the QueryClient receives correct query keys / mutation payloads.
-
-const mockSavedQueriesData = vi.fn<any[]>()
-const mockSavedQueryData = vi.fn<any>()
-const mockCreateMutateAsync = vi.fn()
-const mockUpdateMutateAsync = vi.fn()
-const mockDeleteMutateAsync = vi.fn()
-
-vi.mock('@/hooks/use-queries', () => ({
-  useSavedQueries: vi.fn(() => ({
-    data: mockSavedQueriesData,
-    isLoading: false,
-    isError: false,
-    isSuccess: true,
-  })),
-  useSavedQuery: vi.fn(() => ({
-    data: mockSavedQueryData,
-    isLoading: false,
-    isError: false,
-    isSuccess: true,
-  })),
-  useCreateSavedQuery: vi.fn(() => ({
-    mutateAsync: mockCreateMutateAsync,
-    isPending: false,
-  })),
-  useUpdateSavedQuery: vi.fn(() => ({
-    mutateAsync: mockUpdateMutateAsync,
-    isPending: false,
-  })),
-  useDeleteSavedQuery: vi.fn(() => ({
-    mutateAsync: mockDeleteMutateAsync,
-    isPending: false,
-  })),
-  queryKeys: {
-    allSavedQueries: (projectId?: string) => ['savedQueries', projectId ?? 'all'],
-    savedQuery: (id: string) => ['savedQueries', id],
-  },
-}))
-
-// Import AFTER vi.mock
 import {
   useSavedQueries,
   useSavedQuery,
@@ -53,93 +12,164 @@ import {
   useDeleteSavedQuery,
   queryKeys,
 } from '@/hooks/use-queries'
+import type { SortBy } from '@/types'
 
-// ─── Setup ─────────────────────────────────────────────────────────────────────
+// ─── Fetch mock helpers ─────────────────────────────────────────────────────
+
+const originalFetch = globalThis.fetch
+
+beforeEach(() => {
+  globalThis.fetch = vi.fn() as unknown as typeof globalThis.fetch
+})
+
+afterEach(() => {
+  globalThis.fetch = originalFetch
+})
 
 function createWrapper() {
   const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: {
+      queries: { retry: false, staleTime: 0 },
+      mutations: { retry: false },
+    },
   })
   return ({ children }: { children: React.ReactNode }) => (
     <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
   )
 }
 
-// ─── Hook integration tests ─────────────────────────────────────────────────────
+// ─── Tests ───────────────────────────────────────────────────────────────────
 
 describe('useSavedQueries', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
 
-  it('returns data from hook', async () => {
-    mockSavedQueriesData.mockResolvedValueOnce([
-      { id: 'q1', name: 'Open tasks', filters: {} },
-    ])
-
-    const { result } = renderHook(() => useSavedQueries('proj-1'), { wrapper: createWrapper() })
-
-    // Hook is mocked so resolves immediately
-    await waitFor(() => expect(result.current.data).toBeDefined())
-    expect(result.current.isSuccess).toBe(true)
-  })
-
-  it('is called with projectId when provided', async () => {
-    renderHook(() => useSavedQueries('proj-xyz'), { wrapper: createWrapper() })
-
-    await waitFor(() =>
-      expect(useSavedQueries).toHaveBeenCalledWith('proj-xyz')
+  it('fetches from /api/queries when no projectId', async () => {
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve([{ id: 'q1', name: 'Open tasks', filters: {} }]),
+        } as Response)
     )
+
+    const { result } = renderHook(() => useSavedQueries(), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data).toHaveLength(1)
   })
 
-  it('is called when no projectId (undefined)', async () => {
-    renderHook(() => useSavedQueries(), { wrapper: createWrapper() })
+  it('fetches from /api/queries?projectId=... when projectId provided', async () => {
+    let capturedUrl = ''
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (url: string) => {
+        capturedUrl = url
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve([]),
+        } as Response)
+      }
+    )
 
-    // Hook should have been called at least once
-    expect(useSavedQueries).toHaveBeenCalled()
+    const { result } = renderHook(() => useSavedQueries('proj-xyz'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(capturedUrl).toBe('/api/queries?projectId=proj-xyz')
+  })
+
+  it('throws and sets isError when fetch fails', async () => {
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () => Promise.resolve({ ok: false, status: 500 } as Response)
+    )
+
+    const { result } = renderHook(() => useSavedQueries(), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.isError).toBe(true))
   })
 })
 
 describe('useSavedQuery', () => {
-  beforeEach(() => { vi.clearAllMocks() })
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
 
-  it('is called with query id', async () => {
-    renderHook(() => useSavedQuery('q123'), { wrapper: createWrapper() })
-
-    await waitFor(() =>
-      expect(useSavedQuery).toHaveBeenCalledWith('q123')
+  it('fetches from /api/queries/{id}', async () => {
+    let capturedUrl = ''
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (url: string) => {
+        capturedUrl = url
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: 'q123', name: 'Test Query', filters: {} }),
+        } as Response)
+      }
     )
+
+    const { result } = renderHook(() => useSavedQuery('q123'), { wrapper: createWrapper() })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(result.current.data?.id).toBe('q123')
+    expect(capturedUrl).toBe('/api/queries/q123')
+  })
+
+  it('does not fetch when id is empty', async () => {
+    const { result } = renderHook(() => useSavedQuery(''), { wrapper: createWrapper() })
+    expect(result.current.isLoading).toBe(false)
+    expect(result.current.data).toBeUndefined()
   })
 })
 
 describe('useCreateSavedQuery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockCreateMutateAsync.mockResolvedValue({ id: 'q-new', name: 'New View' })
   })
 
-  it('mutateAsync is called with correct input', async () => {
+  it('calls POST /api/queries with correct body', async () => {
+    const { result } = renderHook(() => useCreateSavedQuery(), { wrapper: createWrapper() })
+
+    let capturedRequest: RequestInit | undefined
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (_url: string, init?: RequestInit) => {
+        capturedRequest = init
+        return Promise.resolve({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({ id: 'q-new', name: 'New View', filters: {} }),
+        } as Response)
+      }
+    )
+
     const input = {
       name: 'My Saved View',
       projectId: 'proj-1',
-      filters: { statusId: 'open' },
-      sortBy: [],
-      displayMode: 'board' as const,
+      filters: {} as Record<string, unknown>,
+      sortBy: [] as SortBy[],
+      displayMode: 'board',
     }
-
-    const { result } = renderHook(() => useCreateSavedQuery(), { wrapper: createWrapper() })
 
     await act(async () => {
       await result.current.mutateAsync(input)
     })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(mockCreateMutateAsync).toHaveBeenCalledWith(input)
+    expect(capturedRequest?.method).toBe('POST')
+    expect(capturedRequest?.headers).toEqual({ 'Content-Type': 'application/json' })
+    expect(JSON.parse(capturedRequest?.body as string)).toMatchObject({ name: 'My Saved View', projectId: 'proj-1' })
   })
 
-  it('returns resolved value from mutateAsync', async () => {
+  it('returns created query data', async () => {
     const { result } = renderHook(() => useCreateSavedQuery(), { wrapper: createWrapper() })
 
-    let returned: any
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      () =>
+        Promise.resolve({
+          ok: true,
+          status: 201,
+          json: () => Promise.resolve({ id: 'q-new', name: 'New View', filters: {} }),
+        } as Response)
+    )
+
+    let returned: unknown
     await act(async () => {
       returned = await result.current.mutateAsync({
         name: 'X',
@@ -149,44 +179,65 @@ describe('useCreateSavedQuery', () => {
       })
     })
 
-    expect(returned).toEqual({ id: 'q-new', name: 'New View' })
+    expect((returned as any).id).toBe('q-new')
   })
 })
 
 describe('useUpdateSavedQuery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockUpdateMutateAsync.mockResolvedValue({ id: 'q1', name: 'Updated Name' })
   })
 
-  it('mutateAsync is called with id and data', async () => {
+  it('calls PATCH /api/queries/{id} with partial data', async () => {
     const { result } = renderHook(() => useUpdateSavedQuery(), { wrapper: createWrapper() })
+
+    let capturedUrl = ''
+    let capturedRequest: RequestInit | undefined
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (url: string, init?: RequestInit) => {
+        capturedUrl = url
+        capturedRequest = init
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: () => Promise.resolve({ id: 'q1', name: 'Updated Name', filters: {} }),
+        } as Response)
+      }
+    )
 
     await act(async () => {
       await result.current.mutateAsync({ id: 'q1', data: { name: 'Updated Name', isDefault: true } })
     })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(mockUpdateMutateAsync).toHaveBeenCalledWith({
-      id: 'q1',
-      data: { name: 'Updated Name', isDefault: true },
-    })
+    expect(capturedUrl).toBe('/api/queries/q1')
+    expect(capturedRequest?.method).toBe('PATCH')
+    expect(JSON.parse(capturedRequest?.body as string)).toMatchObject({ name: 'Updated Name', isDefault: true })
   })
 })
 
 describe('useDeleteSavedQuery', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    mockDeleteMutateAsync.mockResolvedValue(undefined)
   })
 
-  it('mutateAsync is called with id string', async () => {
+  it('calls DELETE /api/queries/{id}', async () => {
     const { result } = renderHook(() => useDeleteSavedQuery(), { wrapper: createWrapper() })
+
+    let capturedUrl = ''
+    ;(globalThis.fetch as ReturnType<typeof vi.fn>).mockImplementationOnce(
+      (url: string) => {
+        capturedUrl = url
+        return Promise.resolve({ ok: true, status: 204 } as Response)
+      }
+    )
 
     await act(async () => {
       await result.current.mutateAsync('q1')
     })
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
-    expect(mockDeleteMutateAsync).toHaveBeenCalledWith('q1')
+    expect(capturedUrl).toBe('/api/queries/q1')
   })
 })
 
