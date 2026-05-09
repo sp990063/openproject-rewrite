@@ -50,6 +50,9 @@ model User {
   notifications Notification[]
   notificationSettings NotificationSetting[]
 
+  // Phase 6: File storage
+  uploadedFiles ProjectFile[] @relation("FileUploader")
+
   @@map("users")
 }
 
@@ -80,6 +83,9 @@ model Project {
 
   // Phase 5: Project WIP Limits
   wipLimits   ProjectWipLimit[]
+
+  // Phase 6: File storage
+  files ProjectFile[]
 
   @@map("projects")
 }
@@ -151,6 +157,13 @@ model WorkPackage {
   @@index([projectId])
   @@index([statusId])
   @@index([assigneeId])
+  // Phase 6 performance indexes
+  @@index([projectId, statusId])
+  @@index([projectId, assigneeId])
+  @@index([projectId, typeId])
+  @@index([dueDate])
+  @@index([startDate])
+  @@index([updatedAt])
   @@map("work_packages")
 }
 
@@ -256,6 +269,9 @@ model TimeEntry {
   user        User        @relation(fields: [userId], references: [id])
   approver    User?       @relation("TimeEntryApprover", fields: [approvedBy], references: [id])
 
+  // Phase 6 performance indexes
+  @@index([workPackageId, spentOn])
+  @@index([userId, spentOn])
   @@map("time_entries")
 }
 
@@ -583,4 +599,27 @@ model EmailQueue {
   processedAt DateTime?
   @@index([processedAt, scheduledAt, attempts])
   @@map("email_queue")
+}
+
+// ============================================
+// FILE STORAGE (Phase 6)
+// ============================================
+
+model ProjectFile {
+  id          String   @id @default(cuid())
+  projectId   String
+  filename    String
+  storageKey  String   @unique
+  contentType String
+  size        Int      @default(0)
+  uploadedById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  uploadedBy User   @relation("FileUploader", fields: [uploadedById], references: [id])
+
+  @@index([projectId])
+  @@index([uploadedById])
+  @@map("project_files")
 }
