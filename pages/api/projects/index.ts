@@ -7,6 +7,7 @@ const createProjectSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().optional(),
   identifier: z.string().min(1).max(100).regex(/^[a-z0-9-_]+$/, 'Identifier must be lowercase alphanumeric with hyphens'),
+  moduleTypes: z.array(z.string()).optional(), // default modules to enable; if omitted, all are created
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -51,6 +52,18 @@ async function getProjects(req: NextApiRequest, res: NextApiResponse) {
   }
 }
 
+const ALL_MODULES = [
+  'work_packages',
+  'gantt',
+  'board',
+  'calendar',
+  'wiki',
+  'forums',
+  'documents',
+  'meetings',
+  'time_tracking',
+]
+
 async function createProject(req: NextApiRequest, res: NextApiResponse) {
   try {
     const data = createProjectSchema.parse(req.body)
@@ -63,11 +76,22 @@ async function createProject(req: NextApiRequest, res: NextApiResponse) {
       return res.status(400).json({ error: 'Project identifier already exists' })
     }
 
+    const moduleTypes = data.moduleTypes ?? ALL_MODULES
+
     const project = await prisma.project.create({
       data: {
         name: data.name,
         description: data.description,
         identifier: data.identifier,
+        modules: {
+          create: moduleTypes.map((module) => ({
+            module,
+            enabled: true,
+          })),
+        },
+      },
+      include: {
+        modules: true,
       },
     })
 

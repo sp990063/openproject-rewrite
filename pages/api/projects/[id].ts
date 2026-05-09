@@ -6,6 +6,7 @@ import { checkRateLimit } from '@/lib/ratelimit'
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
+  identifier: z.string().min(1).max(100).regex(/^[a-z0-9-_]+$/, 'Identifier must be lowercase alphanumeric with hyphens').optional(),
   status: z.enum(['active', 'archived', 'on_hold']).optional(),
 })
 
@@ -70,6 +71,16 @@ async function updateProject(req: NextApiRequest, res: NextApiResponse, id: stri
   try {
     const data = updateProjectSchema.parse(req.body)
 
+    // Check if identifier is being changed and if the new identifier already exists
+    if (data.identifier) {
+      const existing = await prisma.project.findUnique({
+        where: { identifier: data.identifier },
+      })
+      if (existing && existing.id !== id) {
+        return res.status(400).json({ error: 'Project identifier already exists' })
+      }
+    }
+
     const project = await prisma.project.update({
       where: { id },
       data,
@@ -87,13 +98,15 @@ async function updateProject(req: NextApiRequest, res: NextApiResponse, id: stri
 
 async function deleteProject(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
-    await prisma.project.delete({
+    // Archive instead of hard delete (soft delete)
+    const project = await prisma.project.update({
       where: { id },
+      data: { status: 'archived' },
     })
 
-    return res.status(204).end()
+    return res.status(200).json(project)
   } catch (error) {
-    console.error('Error deleting project:', error)
-    return res.status(500).json({ error: 'Failed to delete project' })
+    console.error('Error archiving project:', error)
+    return res.status(500).json({ error: 'Failed to archive project' })
   }
 }
