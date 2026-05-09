@@ -2,13 +2,8 @@
 import React, { useState } from 'react'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
 import { Button } from '@/components/ui'
-import { useMyPage, useSaveMyPage, type MyPageWidget } from '@/hooks/useMyPage'
-import {
-  MyPageWidget,
-  AssignedWorkPackagesWidget,
-  TimeEntriesWidget,
-  UpcomingMeetingsWidget,
-} from '@/components/my-page'
+import { useMyPage, useSaveMyPage } from '@/hooks/useMyPage'
+import { MyPageWidget as MyPageWidgetComponent, AssignedWorkPackagesWidget, TimeEntriesWidget, UpcomingMeetingsWidget } from '@/components/my-page'
 
 const WIDGET_MAP: Record<string, React.ComponentType<{ config?: Record<string, unknown> }>> = {
   assigned_work_packages: AssignedWorkPackagesWidget,

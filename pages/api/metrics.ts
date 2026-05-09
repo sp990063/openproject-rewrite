@@ -8,7 +8,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const metrics = await register.getMetricsAsString();
+    const metrics = await register.metrics();
     res.setHeader('Content-Type', register.contentType);
     return res.send(metrics);
   } catch (e) {

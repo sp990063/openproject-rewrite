@@ -4,14 +4,15 @@ import { queryKeys } from '@/queries/queryKeys'
 
 // ─── Response types with relations (API shape) ────────────────────────────────
 
-export interface DocumentWithMeta extends ProjectDocument {
+export type DocumentWithMeta = ProjectDocument & {
   author?: { id: string; name: string; email?: string; avatarUrl?: string | null }
   folder?: Pick<ProjectDocumentFolder, 'id' | 'name'> | null
 }
 
-export interface FolderWithMeta extends ProjectDocumentFolder {
+export type FolderWithMeta = ProjectDocumentFolder & {
   _count?: { documents: number; children: number }
   author?: { id: string; name: string; email?: string; avatarUrl?: string | null }
+  parent?: Pick<ProjectDocumentFolder, 'id' | 'name'> | null
 }
 
 export interface FolderContents {

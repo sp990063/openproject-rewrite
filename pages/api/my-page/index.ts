@@ -12,7 +12,7 @@ const DEFAULT_WIDGETS = [
 ]
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions)
+  const session = await getServerSession(authOptions)
   if (!session) {
     return res.status(401).json(errorResponse('UNAUTHORIZED', 'Not authenticated'))
   }
@@ -28,7 +28,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       widgets: z.array(z.object({
         id: z.string(),
         type: z.string(),
-        config: z.record(z.unknown()).optional(),
+        config: z.record(z.string(), z.unknown()).optional(),
         position: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }).optional(),
         collapsed: z.boolean().optional(),
       })),

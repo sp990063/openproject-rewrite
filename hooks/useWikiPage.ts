@@ -2,7 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import type { WikiPage } from '@/types'
 import { queryKeys } from '@/queries/queryKeys'
 
-interface WikiPageResponse extends WikiPage {
+interface WikiPageResponse extends Omit<WikiPage, 'createdAt' | 'updatedAt' | 'parent' | 'children' | 'author' | 'project' | 'versions'> {
+  createdAt: string
+  updatedAt: string
   author: { id: string; name: string; email?: string; avatarUrl?: string | null }
   parent: { id: string; title: string; slug: string } | null
   children: { id: string; title: string; slug: string }[]

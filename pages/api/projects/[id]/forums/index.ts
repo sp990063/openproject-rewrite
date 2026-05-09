@@ -10,7 +10,7 @@ const CreateForumSchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions)
+  const session = await getServerSession(authOptions)
   if (!session) {
     return res.status(401).json({ error: 'UNAUTHORIZED' })
   }

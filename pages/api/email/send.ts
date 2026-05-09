@@ -11,11 +11,11 @@ import { getWorkPackageAssignedTemplate, getMentionTemplate, getMeetingInvitatio
 const SendEmailSchema = z.object({
   to: z.union([z.string(), z.array(z.string())]),
   template: z.enum(['work_package_assigned', 'mention', 'meeting_invitation']),
-  data: z.record(z.unknown()),
+  data: z.record(z.string(), z.unknown()),
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions);
+  const session = await getServerSession(authOptions);
   if (!session) {
     return res.status(401).json(errorResponse('UNAUTHORIZED', 'Not authenticated'));
   }

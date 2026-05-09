@@ -28,7 +28,6 @@ function getRatelimiter(): RateLimiterRedis | null {
       storeClient: redis,
       points: 10,
       duration: 1,
-      rejectIfFailed: false,
     })
 
     return ratelimit
@@ -42,9 +41,9 @@ export async function checkRateLimit(ip: string): Promise<boolean> {
   if (!limiter) return true   // degraded: allow all requests
 
   try {
-    const result = await limiter.consume(ip)
-    return result.success
+    await limiter.consume(ip)
+    return true
   } catch {
-    return true   // Redis error: allow rather than block
+    return false   // rate limit exceeded
   }
 }

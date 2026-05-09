@@ -1,4 +1,4 @@
-import NextAuth, { type DefaultSession } from 'next-auth'
+import NextAuth, { type DefaultSession, type Session } from 'next-auth'
 import { PrismaAdapter } from '@auth/prisma-adapter'
 import CredentialsProvider from 'next-auth/providers/credentials'
 import { prisma } from './prisma'
@@ -94,17 +94,17 @@ export const authOptions = {
     }),
   ],
   session: {
-    strategy: 'jwt',
+    strategy: 'jwt' as const,
   },
   pages: {
     signIn: '/login',
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: Record<string, unknown>; user?: unknown }) {
       if (user) {
-        token.id = user.id
-        // ⚠️ L2/S2 FIX: persist admin + migration flags to token so API routes can read without extra DB query
-        const dbUser = await prisma.user.findUnique({ where: { id: user.id } })
+        token.id = (user as { id: string }).id
+        // L2/S2 FIX: persist admin + migration flags to token
+        const dbUser = await prisma.user.findUnique({ where: { id: (user as { id: string }).id } })
         if (dbUser) {
           token.passwordMigrationRequired = dbUser.passwordMigrationRequired
           token.isSystemAdmin = dbUser.isSystemAdmin
@@ -112,10 +112,9 @@ export const authOptions = {
       }
       return token
     },
-    async session({ session, token }) {
+    async session({ session, token }: { session: Session; token: Record<string, unknown> }) {
       if (session.user) {
         session.user.id = token.id as string
-        // Cast through unknown to satisfy strict TS (next-auth session user type doesn't include custom fields)
         const t = token as unknown as { isSystemAdmin?: boolean; passwordMigrationRequired?: boolean }
         session.user.isSystemAdmin = !!t.isSystemAdmin
         session.user.passwordMigrationRequired = !!t.passwordMigrationRequired

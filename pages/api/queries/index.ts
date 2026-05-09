@@ -18,7 +18,7 @@ const createQuerySchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions)
+  const session = await getServerSession(authOptions)
   if (!session?.user?.id) return res.status(401).json({ error: 'Unauthorized' })
 
   const userId = session.user.id

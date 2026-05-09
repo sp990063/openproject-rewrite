@@ -182,7 +182,7 @@ describe('GET /api/documents', () => {
   it.skip('returns 200 with documents array', async () => {
     const { req, res } = makeMocks('GET')
     await documentsHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
     const data = JSON.parse((res as any)._getData())
     expect(Array.isArray(data)).toBe(true)
     expect(data[0]).toHaveProperty('id')
@@ -192,13 +192,13 @@ describe('GET /api/documents', () => {
   it.skip('filters by projectId when provided', async () => {
     const { req, res } = makeMocks('GET', {}, { projectId: c(2) })
     await documentsHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 405 for POST', async () => {
     const { req, res } = makeMocks('POST', { title: 'Test' })
     await documentsHandler(req, res)
-    expect(res.getStatusCode()).toBe(405)
+    expect(res.statusCode).toBe(405)
   })
 })
 
@@ -214,19 +214,19 @@ describe('POST /api/documents', () => {
       authorId: c(1),
     })
     await documentsHandler(req, res)
-    expect(res.getStatusCode()).toBe(201)
+    expect(res.statusCode).toBe(201)
   })
 
   it.skip('returns 400 when title is missing', async () => {
     const { req, res } = makeMocks('POST', { projectId: c(2), authorId: c(1) })
     await documentsHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 
   it.skip('returns 400 when cuid format is invalid', async () => {
     const { req, res } = makeMocks('POST', { projectId: 'not-cuid', title: 'Test', authorId: 'also-invalid' })
     await documentsHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -237,7 +237,7 @@ describe('GET /api/documents/[id]', () => {
   it.skip('returns 200 with document', async () => {
     const { req, res } = makeMocks('GET', {}, { id: c(4) })
     await documentIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
     const data = JSON.parse((res as any)._getData())
     expect(data).toHaveProperty('id')
     expect(data).toHaveProperty('title')
@@ -248,7 +248,7 @@ describe('GET /api/documents/[id]', () => {
     ;(prisma.document.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('GET', {}, { id: 'nonexistent' })
     await documentIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -263,7 +263,7 @@ describe('PATCH /api/documents/[id]', () => {
     })
     const { req, res } = makeMocks('PATCH', { title: 'Updated Title' }, { id: c(4) })
     await documentIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when document not found', async () => {
@@ -271,7 +271,7 @@ describe('PATCH /api/documents/[id]', () => {
     ;(prisma.document.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('PATCH', { title: 'Updated' }, { id: 'nonexistent' })
     await documentIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -286,7 +286,7 @@ describe('DELETE /api/documents/[id]', () => {
     })
     const { req, res } = makeMocks('DELETE', {}, { id: c(4) })
     await documentIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(204)
+    expect(res.statusCode).toBe(204)
   })
 
   it.skip('returns 404 when document not found', async () => {
@@ -294,7 +294,7 @@ describe('DELETE /api/documents/[id]', () => {
     ;(prisma.document.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('DELETE', {}, { id: 'nonexistent' })
     await documentIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -305,7 +305,7 @@ describe('GET /api/documents/folders', () => {
   it.skip('returns 200 with folders array', async () => {
     const { req, res } = makeMocks('GET')
     await foldersHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
     const data = JSON.parse((res as any)._getData())
     expect(Array.isArray(data)).toBe(true)
     expect(data[0]).toHaveProperty('name')
@@ -314,7 +314,7 @@ describe('GET /api/documents/folders', () => {
   it.skip('returns 405 for POST', async () => {
     const { req, res } = makeMocks('POST', { name: 'Test' })
     await foldersHandler(req, res)
-    expect(res.getStatusCode()).toBe(405)
+    expect(res.statusCode).toBe(405)
   })
 })
 
@@ -325,13 +325,13 @@ describe('POST /api/documents/folders', () => {
   it.skip('returns 201 on valid create', async () => {
     const { req, res } = makeMocks('POST', { projectId: c(2), name: 'New Folder' })
     await foldersHandler(req, res)
-    expect(res.getStatusCode()).toBe(201)
+    expect(res.statusCode).toBe(201)
   })
 
   it.skip('returns 400 when name is missing', async () => {
     const { req, res } = makeMocks('POST', { projectId: c(2) })
     await foldersHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -342,7 +342,7 @@ describe('GET /api/documents/folders/[id]', () => {
   it.skip('returns 200 with folder', async () => {
     const { req, res } = makeMocks('GET', {}, { id: c(3) })
     await folderIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when folder not found', async () => {
@@ -350,7 +350,7 @@ describe('GET /api/documents/folders/[id]', () => {
     ;(prisma.documentFolder.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('GET', {}, { id: 'nonexistent' })
     await folderIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -365,7 +365,7 @@ describe('PATCH /api/documents/folders/[id]', () => {
     })
     const { req, res } = makeMocks('PATCH', { name: 'Updated Folder' }, { id: c(3) })
     await folderIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 400 when setting itself as parent', async () => {
@@ -375,7 +375,7 @@ describe('PATCH /api/documents/folders/[id]', () => {
     })
     const { req, res } = makeMocks('PATCH', { parentId: c(3) }, { id: c(3) })
     await folderIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -390,7 +390,7 @@ describe('DELETE /api/documents/folders/[id]', () => {
     })
     const { req, res } = makeMocks('DELETE', {}, { id: c(3) })
     await folderIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(204)
+    expect(res.statusCode).toBe(204)
   })
 
   it.skip('returns 400 when folder has documents', async () => {
@@ -400,7 +400,7 @@ describe('DELETE /api/documents/folders/[id]', () => {
     })
     const { req, res } = makeMocks('DELETE', {}, { id: c(3) })
     await folderIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 
   it.skip('returns 400 when folder has subfolders', async () => {
@@ -410,7 +410,7 @@ describe('DELETE /api/documents/folders/[id]', () => {
     })
     const { req, res } = makeMocks('DELETE', {}, { id: c(3) })
     await folderIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -421,7 +421,7 @@ describe('GET /api/meetings', () => {
   it.skip('returns 200 with meetings array', async () => {
     const { req, res } = makeMocks('GET')
     await meetingsHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
     const data = JSON.parse((res as any)._getData())
     expect(Array.isArray(data)).toBe(true)
     expect(data[0]).toHaveProperty('title')
@@ -430,7 +430,7 @@ describe('GET /api/meetings', () => {
   it.skip('returns 405 for POST', async () => {
     const { req, res } = makeMocks('POST', { title: 'Test' })
     await meetingsHandler(req, res)
-    expect(res.getStatusCode()).toBe(405)
+    expect(res.statusCode).toBe(405)
   })
 })
 
@@ -447,7 +447,7 @@ describe('POST /api/meetings', () => {
       authorId: c(1),
     })
     await meetingsHandler(req, res)
-    expect(res.getStatusCode()).toBe(201)
+    expect(res.statusCode).toBe(201)
   })
 
   it.skip('returns 400 when end time is before start time', async () => {
@@ -459,7 +459,7 @@ describe('POST /api/meetings', () => {
       authorId: c(1),
     })
     await meetingsHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 
   it.skip('returns 400 when cuid format is invalid', async () => {
@@ -471,7 +471,7 @@ describe('POST /api/meetings', () => {
       authorId: 'also-invalid',
     })
     await meetingsHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -482,7 +482,7 @@ describe('GET /api/meetings/[id]', () => {
   it.skip('returns 200 with meeting', async () => {
     const { req, res } = makeMocks('GET', {}, { id: c(5) })
     await meetingIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
     const data = JSON.parse((res as any)._getData())
     expect(data).toHaveProperty('title')
   })
@@ -492,7 +492,7 @@ describe('GET /api/meetings/[id]', () => {
     ;(prisma.meeting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('GET', {}, { id: 'nonexistent' })
     await meetingIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -507,7 +507,7 @@ describe('PATCH /api/meetings/[id]', () => {
     })
     const { req, res } = makeMocks('PATCH', { title: 'Updated Meeting' }, { id: c(5) })
     await meetingIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when meeting not found', async () => {
@@ -515,7 +515,7 @@ describe('PATCH /api/meetings/[id]', () => {
     ;(prisma.meeting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('PATCH', { title: 'Updated' }, { id: 'nonexistent' })
     await meetingIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -530,7 +530,7 @@ describe('DELETE /api/meetings/[id]', () => {
     })
     const { req, res } = makeMocks('DELETE', {}, { id: c(5) })
     await meetingIdHandler(req, res)
-    expect(res.getStatusCode()).toBe(204)
+    expect(res.statusCode).toBe(204)
   })
 })
 
@@ -545,7 +545,7 @@ describe('POST /api/meetings/[id]/attendees', () => {
     })
     const { req, res } = makeMocks('POST', { attendees: [{ userId: c(1), response: 'accepted' }] }, { id: c(5) })
     await attendeesHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when meeting not found', async () => {
@@ -553,13 +553,13 @@ describe('POST /api/meetings/[id]/attendees', () => {
     ;(prisma.meeting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('POST', { attendees: [] }, { id: 'nonexistent' })
     await attendeesHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 
   it.skip('returns 405 for GET', async () => {
     const { req, res } = makeMocks('GET', {}, { id: c(5) })
     await attendeesHandler(req, res)
-    expect(res.getStatusCode()).toBe(405)
+    expect(res.statusCode).toBe(405)
   })
 })
 
@@ -574,7 +574,7 @@ describe('GET /api/meetings/[id]/agenda', () => {
     })
     const { req, res } = makeMocks('GET', {}, { id: c(5) })
     await agendaHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when meeting not found', async () => {
@@ -582,7 +582,7 @@ describe('GET /api/meetings/[id]/agenda', () => {
     ;(prisma.meeting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('GET', {}, { id: 'nonexistent' })
     await agendaHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -597,7 +597,7 @@ describe('POST /api/meetings/[id]/agenda', () => {
     })
     const { req, res } = makeMocks('POST', { title: 'New Agenda Item', duration: 30 }, { id: c(5) })
     await agendaHandler(req, res)
-    expect(res.getStatusCode()).toBe(201)
+    expect(res.statusCode).toBe(201)
   })
 
   it.skip('returns 400 when title is missing', async () => {
@@ -607,7 +607,7 @@ describe('POST /api/meetings/[id]/agenda', () => {
     })
     const { req, res } = makeMocks('POST', { duration: 30 }, { id: c(5) })
     await agendaHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -622,7 +622,7 @@ describe('PATCH /api/meetings/[id]/agenda/[agendaId]', () => {
     })
     const { req, res } = makeMocks('PATCH', { title: 'Updated Agenda' }, { id: c(5), agendaId: c(7) })
     await agendaItemHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when agenda item not found', async () => {
@@ -630,7 +630,7 @@ describe('PATCH /api/meetings/[id]/agenda/[agendaId]', () => {
     ;(prisma.meetingAgendaItem.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('PATCH', { title: 'Updated' }, { id: c(5), agendaId: 'nonexistent' })
     await agendaItemHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 
   it.skip('returns 400 when agenda item belongs to different meeting', async () => {
@@ -640,7 +640,7 @@ describe('PATCH /api/meetings/[id]/agenda/[agendaId]', () => {
     })
     const { req, res } = makeMocks('PATCH', { title: 'Updated' }, { id: c(5), agendaId: c(7) })
     await agendaItemHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 })
 
@@ -655,7 +655,7 @@ describe('DELETE /api/meetings/[id]/agenda/[agendaId]', () => {
     })
     const { req, res } = makeMocks('DELETE', {}, { id: c(5), agendaId: c(7) })
     await agendaItemHandler(req, res)
-    expect(res.getStatusCode()).toBe(204)
+    expect(res.statusCode).toBe(204)
   })
 })
 
@@ -666,7 +666,7 @@ describe('GET /api/meetings/[id]/minutes', () => {
   it.skip('returns 200 with minutes', async () => {
     const { req, res } = makeMocks('GET', {}, { id: c(5) })
     await minutesHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when minutes not found', async () => {
@@ -674,7 +674,7 @@ describe('GET /api/meetings/[id]/minutes', () => {
     ;(prisma.meetingMinutes.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('GET', {}, { id: c(5) })
     await minutesHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -690,7 +690,7 @@ describe('POST /api/meetings/[id]/minutes', () => {
     ;(prisma.meetingMinutes.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('POST', { content: 'Minutes content', authorId: c(1) }, { id: c(5) })
     await minutesHandler(req, res)
-    expect(res.getStatusCode()).toBe(201)
+    expect(res.statusCode).toBe(201)
   })
 
   it.skip('returns 409 when minutes already exist', async () => {
@@ -700,7 +700,7 @@ describe('POST /api/meetings/[id]/minutes', () => {
     })
     const { req, res } = makeMocks('POST', { content: 'Minutes content', authorId: c(1) }, { id: c(5) })
     await minutesHandler(req, res)
-    expect(res.getStatusCode()).toBe(409)
+    expect(res.statusCode).toBe(409)
   })
 
   it.skip('returns 404 when meeting not found', async () => {
@@ -708,7 +708,7 @@ describe('POST /api/meetings/[id]/minutes', () => {
     ;(prisma.meeting.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('POST', { content: 'Minutes', authorId: c(1) }, { id: 'nonexistent' })
     await minutesHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -719,7 +719,7 @@ describe('PATCH /api/meetings/[id]/minutes', () => {
   it.skip('returns 200 on valid update', async () => {
     const { req, res } = makeMocks('PATCH', { content: 'Updated minutes content' }, { id: c(5) })
     await minutesHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 404 when minutes not found', async () => {
@@ -727,7 +727,7 @@ describe('PATCH /api/meetings/[id]/minutes', () => {
     ;(prisma.meetingMinutes.findUnique as ReturnType<typeof vi.fn>).mockResolvedValueOnce(null)
     const { req, res } = makeMocks('PATCH', { content: 'Updated' }, { id: c(5) })
     await minutesHandler(req, res)
-    expect(res.getStatusCode()).toBe(404)
+    expect(res.statusCode).toBe(404)
   })
 })
 
@@ -738,7 +738,7 @@ describe('POST /api/search', () => {
   it.skip('returns 200 with search results', async () => {
     const { req, res } = makeMocks('POST', { q: 'test', limit: 20, offset: 0 })
     await searchHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
     const data = JSON.parse((res as any)._getData())
     expect(data).toHaveProperty('query')
     expect(data).toHaveProperty('results')
@@ -748,30 +748,30 @@ describe('POST /api/search', () => {
   it.skip('filters by projectId when provided', async () => {
     const { req, res } = makeMocks('POST', { q: 'test', projectId: c(2) })
     await searchHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('filters by types when provided', async () => {
     const { req, res } = makeMocks('POST', { q: 'test', types: ['wiki', 'document'] })
     await searchHandler(req, res)
-    expect(res.getStatusCode()).toBe(200)
+    expect(res.statusCode).toBe(200)
   })
 
   it.skip('returns 400 when query is missing', async () => {
     const { req, res } = makeMocks('POST', {})
     await searchHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 
   it.skip('returns 400 when query is empty', async () => {
     const { req, res } = makeMocks('POST', { q: '   ' })
     await searchHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
+    expect(res.statusCode).toBe(400)
   })
 
   it.skip('returns 405 for GET', async () => {
     const { req, res } = makeMocks('GET', { q: 'test' })
     await searchHandler(req, res)
-    expect(res.getStatusCode()).toBe(405)
+    expect(res.statusCode).toBe(405)
   })
 })

@@ -13,7 +13,7 @@ export default function WikiPagesIndexPage() {
   const router = useRouter()
   const { projectId } = router.query
 
-  const { wikiPages, isLoading, error } = useWikiPages(projectId as string | undefined)
+  const { data: wikiPages = [], isLoading, error } = useWikiPages(projectId as string | undefined)
   const createWikiPage = useCreateWikiPage()
   const { data: currentUser } = useCurrentUser()
 

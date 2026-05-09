@@ -4,5 +4,5 @@ export function successResponse(data: unknown, message?: string) {
 }
 
 export function errorResponse(code: string, message: string, details?: unknown) {
-  return { success: false, error: { code, message, ...(details && { details }) } };
+  return { success: false, error: { code, message, ...(details !== undefined ? { details } : {}) } };
 }

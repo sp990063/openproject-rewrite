@@ -183,10 +183,10 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
             <button
               onClick={() => {
                 const statusId = prompt('Enter status ID to set WIP limit:')
-                if (!statusId) return
+                if (!statusId || !resolvedProjectId) return
                 const limitStr = prompt('Enter WIP limit (empty = unlimited):')
-                const limit = limitStr === '' ? null : parseInt(limitStr, 10)
-                if (isNaN(limit) && limitStr !== '') return
+                const limit = limitStr === null ? null : limitStr === '' ? null : parseInt(limitStr, 10)
+                if (limit !== null && isNaN(limit)) return
                 import('@/hooks/use-wip-limits').then(({ useUpdateWipLimit }) => {
                   // Use a refetch approach — for now, just reload the page
                   window.location.reload()

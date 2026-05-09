@@ -16,7 +16,7 @@ const upsertSettingSchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions)
+  const session = await getServerSession(authOptions)
   if (!session?.user?.id) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
@@ -58,7 +58,7 @@ async function upsertSetting(req: NextApiRequest, res: NextApiResponse, userId: 
       where: {
         userId_projectId_notificationType: {
           userId,
-          projectId: projectId ?? null,
+          projectId: (projectId ?? null) as string | null,
           notificationType,
         },
       },

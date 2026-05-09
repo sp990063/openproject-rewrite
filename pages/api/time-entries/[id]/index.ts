@@ -75,7 +75,7 @@ async function getTimeEntry(req: NextApiRequest, res: NextApiResponse, id: strin
 
 async function updateTimeEntry(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
-    const session = await getServerSession(req, res, authOptions)
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
     }
@@ -133,7 +133,7 @@ async function updateTimeEntry(req: NextApiRequest, res: NextApiResponse, id: st
 
 async function deleteTimeEntry(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
-    const session = await getServerSession(req, res, authOptions)
+    const session = await getServerSession(authOptions)
     if (!session?.user) {
       return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
     }

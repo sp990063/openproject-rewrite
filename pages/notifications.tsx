@@ -5,6 +5,7 @@ import { Button } from '@/components/ui'
 import { useNotifications, useUnreadCount } from '@/hooks/useNotifications'
 import { useMarkAllNotificationsRead } from '@/hooks/useNotificationMutations'
 import { NotificationItem } from '@/components/notifications'
+import type { Notification } from '@/types'
 
 export default function NotificationsPage() {
   const [page, setPage] = useState(1)
@@ -59,7 +60,7 @@ export default function NotificationsPage() {
           ) : (
             <>
               <div className="divide-y divide-gray-100">
-                {notifications.map((notification) => (
+                {notifications.map((notification: Notification) => (
                   <NotificationItem key={notification.id} notification={notification} />
                 ))}
               </div>

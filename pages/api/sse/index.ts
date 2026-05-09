@@ -11,7 +11,7 @@ export const config = {
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // @ts-ignore - next-auth types are complex
-  const session = await getServerSession(req, res, authOptions);
+  const session = await getServerSession(authOptions);
   if (!session) {
     return res.status(401).json({ error: 'Unauthorized' });
   }

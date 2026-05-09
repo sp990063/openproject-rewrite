@@ -13,7 +13,7 @@ export default function WikiPageViewPage() {
   const router = useRouter()
   const { projectId, slug } = router.query
 
-  const { wikiPage, isLoading, error } = useWikiPage(projectId as string | undefined, slug as string | undefined)
+  const { data: wikiPage, isLoading, error } = useWikiPage(projectId as string | undefined, slug as string | undefined)
   const updateWikiPage = useUpdateWikiPage()
   const deleteWikiPage = useDeleteWikiPage()
   const { data: currentUser } = useCurrentUser()
@@ -163,7 +163,7 @@ export default function WikiPageViewPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 mb-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Child Pages</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              {wikiPage.children.map((child) => (
+              {wikiPage.children.map((child: { id: string; slug: string; title: string }) => (
                 <Link
                   key={child.id}
                   href={`/projects/${projectId}/wiki/${child.slug}`}
