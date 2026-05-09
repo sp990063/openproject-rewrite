@@ -209,14 +209,14 @@ describe('WorkPackagesPage', () => {
   })
 
   // ✅ VALID: filling and submitting the create form calls the mutation
-  async () => {
+  it('fills and submits the create form', async () => {
     const user = userEvent.setup()
     render(<WorkPackagesPage />)
     await user.click(screen.getByRole('button', { name: 'New Work Package' }))
     await user.type(screen.getByLabelText('Subject'), 'New Bug Fix')
     await user.type(screen.getByLabelText('Description'), 'Fix login issue')
     await user.click(screen.getByRole('button', { name: 'Create' }))
-  }
+  })
 
   // ✅ VALID: modal has Cancel and Create buttons
   it('modal has Cancel and Create buttons', async () => {

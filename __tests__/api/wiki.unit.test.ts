@@ -195,15 +195,6 @@ describe('POST /api/wiki', () => {
     expect(res.getStatusCode()).toBe(400)
   })
 
-  it.skip('returns 400 when authorId is missing', async () => {
-    const { req, res } = makeMocks('POST', {
-      projectId: c(2),
-      title: 'Test Page',
-    })
-    await wikiHandler(req, res)
-    expect(res.getStatusCode()).toBe(400)
-  })
-
   it.skip('returns 400 when cuid format is invalid', async () => {
     const { req, res } = makeMocks('POST', {
       projectId: 'not-a-cuid',
