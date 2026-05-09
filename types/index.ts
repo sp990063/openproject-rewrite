@@ -267,3 +267,9 @@ export type { ProjectDocument, ProjectDocumentFolder, CreateDocumentInput, Updat
 // ─── Global Search Types ──────────────────────────────────────────────────────
 
 export type { SearchResult, SearchResultType, SearchResponse, SearchFilters, SearchParams } from './search'
+
+// ─── Phase 5: Notification Types ─────────────────────────────────────────────
+export * from './notification';
+
+// ─── Phase 5: My Page Types ───────────────────────────────────────────────────
+export * from './my-page';

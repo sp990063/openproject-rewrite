@@ -46,6 +46,10 @@ model User {
   meetingAttendees MeetingAttendee[]
   meetingMinutes MeetingMinutes[]
 
+  // Phase 5: Notification relations
+  notifications Notification[]
+  notificationSettings NotificationSetting[]
+
   @@map("users")
 }
 
@@ -73,6 +77,9 @@ model Project {
   documents   Document[]
   documentFolders DocumentFolder[]
   meetings    Meeting[]
+
+  // Phase 5: Project WIP Limits
+  wipLimits   ProjectWipLimit[]
 
   @@map("projects")
 }
@@ -282,6 +289,7 @@ model ProjectWipLimit {
   @@unique([projectId, statusId])
   @@map("project_wip_limits")
 }
+
 model Query {
   id         String   @id @default(cuid())
   userId     String
@@ -520,4 +528,59 @@ model MeetingMinutes {
   author  User    @relation(fields: [authorId], references: [id])
 
   @@map("meeting_minutes")
+}
+
+// ============================================
+// NOTIFICATIONS (Phase 5)
+// ============================================
+
+model Notification {
+  id              String    @id @default(cuid())
+  userId          String
+  reason          String    // NotificationReason
+  projectId       String
+  projectName     String    @default("")
+  resourceType    String    // 'work_package', 'wiki_page', 'forum_thread', 'meeting', 'document'
+  resourceId      String
+  resourceSubject String    @default("")
+  actorId         String
+  actorName       String    @default("")
+  read            Boolean   @default(false)
+  readAt          DateTime?
+  createdAt       DateTime  @default(now())
+
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, read])
+  @@index([userId, createdAt])
+  @@map("notifications")
+}
+
+model NotificationSetting {
+  id               String  @id @default(cuid())
+  userId           String
+  projectId        String? // null = global settings
+  notificationType String  // e.g. 'work_package_assigned', 'mention'
+
+  // D7 FIX: per-channel granular control
+  emailEnabled   Boolean @default(true)
+  inAppEnabled   Boolean @default(true)
+  digestEnabled  Boolean @default(false)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId, notificationType])
+  @@map("notification_settings")
+}
+
+model EmailQueue {
+  id          String    @id @default(cuid())
+  to          String
+  subject     String
+  html        String
+  attempts    Int       @default(0)
+  lastError   String?
+  scheduledAt DateTime
+  processedAt DateTime?
+  @@index([processedAt, scheduledAt, attempts])
+  @@map("email_queue")
 }
