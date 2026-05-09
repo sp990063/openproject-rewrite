@@ -37,6 +37,9 @@ export const queryKeys = {
 
   /** All users (for a project or global) */
   users: (projectId?: string) => ['users', projectId ?? null] as const,
+
+  /** WIP limits for a project */
+  wipLimits: (projectId: string) => ['projects', projectId, 'wip-limits'] as const,
 } as const
 
 export type QueryKeys = typeof queryKeys

@@ -2,12 +2,12 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { requireWorkPackagePermission } from '@/lib/permissions/work-packages'
 
 const reorderSchema = z.object({
   workPackageId: z.string().cuid(),
+  targetStatusId: z.string().cuid(),
   position: z.number().int().min(0),
-  groupBy: z.string().optional(),
-  groupValue: z.string().optional(),
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -25,63 +25,139 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   try {
-    const { workPackageId, position: newPosition } = reorderSchema.parse(req.body)
+    const { workPackageId, targetStatusId, position: rawPosition } = reorderSchema.parse(req.body)
 
-    // Fetch current WP to get its current position
+    // Fetch current work package
     const wp = await prisma.workPackage.findUnique({
       where: { id: workPackageId },
       select: { id: true, projectId: true, statusId: true, position: true },
     })
+
     if (!wp) {
-      return res.status(404).json({ error: 'Work package not found' })
+      return res.status(404).json({ error: 'Work package not found', code: 'WORK_PACKAGE_NOT_FOUND' })
     }
 
-    // No-op: already at target position
-    if (wp.position === newPosition) {
-      return res.status(200).json({ success: true })
+    // Permission check
+    const permError = await requireWorkPackagePermission(workPackageId, 'WORK_PACKAGE_EDIT')
+    if (permError) {
+      return res.status(permError.status).json({ error: permError.code === 'FORBIDDEN' ? 'Forbidden' : 'Work package not found', code: permError.code })
     }
 
+    // Verify target status exists in the project
+    const targetStatus = await prisma.status.findUnique({
+      where: { id: targetStatusId },
+      select: { id: true },
+    })
+    if (!targetStatus) {
+      return res.status(404).json({ error: 'Status not found', code: 'STATUS_NOT_FOUND' })
+    }
+
+    // Count work packages in target status column
+    const columnCount = await prisma.workPackage.count({
+      where: { projectId: wp.projectId, statusId: targetStatusId },
+    })
+
+    // Clamp position to valid range
+    const targetPosition = Math.max(0, Math.min(rawPosition, columnCount))
+
+    // No-op: same status + same position
+    if (wp.statusId === targetStatusId && wp.position === targetPosition) {
+      const currentColumn = await prisma.workPackage.findMany({
+        where: { projectId: wp.projectId, statusId: targetStatusId },
+        orderBy: { position: 'asc' },
+        select: { id: true, position: true },
+      })
+      return res.status(200).json({
+        workPackage: { id: wp.id, position: wp.position, statusId: wp.statusId },
+        column: { statusId: targetStatusId, workPackages: currentColumn },
+      })
+    }
+
+    const oldStatusId = wp.statusId
     const oldPosition = wp.position
+    const isMovingToNewColumn = oldStatusId !== targetStatusId
 
-    // Determine shift direction:
-    // oldPos > newPos  → moving UP in list: shift items in [newPos, oldPos) by +1
-    // oldPos < newPos  → moving DOWN in list: shift items in (oldPos, newPos] by -1
-    await prisma.$transaction(async (tx) => {
-      if (oldPosition > newPosition) {
-        // Moving up: make room at newPosition by shifting intermediate items down
+    // Perform reorder in a single transaction
+    const result = await prisma.$transaction(async (tx) => {
+      if (isMovingToNewColumn) {
+        // ── Moving to a different column ──────────────────────────────────
+        // Step 1: Shift DOWN the old column (items after old position shift -1)
         await tx.workPackage.updateMany({
           where: {
             projectId: wp.projectId,
-            statusId: wp.statusId,
-            position: { gte: newPosition, lt: oldPosition },
-            id: { not: workPackageId },
+            statusId: oldStatusId,
+            position: { gt: oldPosition },
+          },
+          data: { position: { decrement: 1 } },
+        })
+
+        // Step 2: Shift UP the target column (items at or after target position shift +1)
+        await tx.workPackage.updateMany({
+          where: {
+            projectId: wp.projectId,
+            statusId: targetStatusId,
+            position: { gte: targetPosition },
           },
           data: { position: { increment: 1 } },
         })
       } else {
-        // Moving down: make room at newPosition by shifting intermediate items up
-        await tx.workPackage.updateMany({
-          where: {
-            projectId: wp.projectId,
-            statusId: wp.statusId,
-            position: { gt: oldPosition, lte: newPosition },
-            id: { not: workPackageId },
-          },
-          data: { position: { decrement: 1 } },
-        })
+        // ── Moving within the same column ────────────────────────────────
+        if (oldPosition > targetPosition) {
+          // Moving UP: shift intermediate items DOWN (+1) to make room
+          await tx.workPackage.updateMany({
+            where: {
+              projectId: wp.projectId,
+              statusId: oldStatusId,
+              position: { gte: targetPosition, lt: oldPosition },
+              id: { not: workPackageId },
+            },
+            data: { position: { increment: 1 } },
+          })
+        } else {
+          // Moving DOWN: shift intermediate items UP (-1) to make room
+          await tx.workPackage.updateMany({
+            where: {
+              projectId: wp.projectId,
+              statusId: oldStatusId,
+              position: { gt: oldPosition, lte: targetPosition },
+              id: { not: workPackageId },
+            },
+            data: { position: { decrement: 1 } },
+          })
+        }
       }
 
-      // Place the moved item at its target position
-      await tx.workPackage.update({
+      // Step 3: Update the work package to its new status and position
+      const updatedWp = await tx.workPackage.update({
         where: { id: workPackageId },
-        data: { position: newPosition },
+        data: { statusId: targetStatusId, position: targetPosition },
+        select: { id: true, position: true, statusId: true },
       })
+
+      // Step 4: Fetch the full updated target column
+      const column = await tx.workPackage.findMany({
+        where: { projectId: wp.projectId, statusId: targetStatusId },
+        orderBy: { position: 'asc' },
+        select: { id: true, position: true },
+      })
+
+      return { updatedWp, column }
     })
 
-    return res.status(200).json({ success: true })
+    return res.status(200).json({
+      workPackage: {
+        id: result.updatedWp.id,
+        position: result.updatedWp.position,
+        statusId: result.updatedWp.statusId,
+      },
+      column: {
+        statusId: targetStatusId,
+        workPackages: result.column,
+      },
+    })
   } catch (error) {
     if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
+      return res.status(400).json({ error: 'Validation failed', code: 'INVALID_POSITION', details: error.issues })
     }
     console.error('Error reordering work package:', error)
     return res.status(500).json({ error: 'Failed to reorder work package' })

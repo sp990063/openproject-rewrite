@@ -9,12 +9,13 @@ import {
   type DragStartEvent,
   type DragEndEvent,
 } from '@dnd-kit/core'
-import { arrayMove } from '@dnd-kit/sortable'
 import { useRouter } from 'next/router'
-import { useWorkPackages, useUpdateWorkPackage } from '@/hooks/use-work-packages'
+import { useWorkPackages, useUpdateWorkPackage, useReorderWorkPackage } from '@/hooks/use-work-packages'
+import { useWipLimits } from '@/hooks/use-wip-limits'
 import { WorkPackageBoardColumn } from './WorkPackageBoardColumn'
 import { WorkPackageBoardDragLayer } from './WorkPackageBoardDragLayer'
 import { WorkPackageBoardAddCard } from './WorkPackageBoardAddCard'
+import { WorkPackageBoardEmptyState } from './WorkPackageBoardEmptyState'
 import type { BoardColumn } from './types'
 import type { WorkPackageFilter } from '@/types'
 
@@ -41,9 +42,18 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
 
   // ── Data ─────────────────────────────────────────────────────────────────────
   const { workPackages } = useWorkPackages(filters as WorkPackageFilter)
+  const { data: wipLimits = [] } = useWipLimits(resolvedProjectId ?? '')
   const updateWorkPackage = useUpdateWorkPackage()
+  const reorderWorkPackage = useReorderWorkPackage()
 
   const wpData = workPackages.data ?? []
+
+  // ── Build WIP limit map: statusId → limit ───────────────────────────────────
+  const wipLimitMap = useMemo(() => {
+    const map = new Map<string, number | null>()
+    for (const l of wipLimits) map.set(l.statusId, l.limit)
+    return map
+  }, [wipLimits])
 
   // ── DnD sensors ──────────────────────────────────────────────────────────────
   const sensors = useSensors(
@@ -71,8 +81,7 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
     for (const [statusId, wps] of groups) {
       const firstWp = wps[0]
       const status = firstWp.status ?? { id: statusId, name: 'Unknown', color: '#6B7280', position: 0, isClosed: false }
-      // WIP limits: placeholder — null = unlimited for all columns
-      const wipLimit: number | null = null
+      const wipLimit = wipLimitMap.get(statusId) ?? null
 
       result.push({
         statusId,
@@ -111,33 +120,45 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
       if (!draggedWp) return
 
       const sourceStatusId = draggedWp.statusId ?? 'none'
-      if (sourceStatusId === targetStatusId) return
+      const isSameColumn = sourceStatusId === targetStatusId
 
-      // Check WIP limit before dropping
+      // Get target column (for WIP check or position calculation)
       const targetColumn = columns.find((c) => c.statusId === targetStatusId)
-      if (targetColumn?.wipLimit != null) {
+      const newPosition = isSameColumn
+        ? draggedWp.position
+        : (targetColumn?.workPackages.length ?? 0)
+
+      // Check WIP limit before dropping (only for cross-column moves)
+      if (!isSameColumn && targetColumn?.wipLimit != null) {
         const wouldBeOver = targetColumn.workPackages.length >= targetColumn.wipLimit
         if (wouldBeOver) {
-          // Block drop — show warning
           alert(`Cannot move: "${targetColumn.status.name}" is at its WIP limit (${targetColumn.wipLimit}).`)
           return
         }
       }
 
-      // Optimistic update
       try {
+        // 1. Update statusId (cross-column) or keep same (same-column reorder)
         await updateWorkPackage.mutateAsync({
           id: active.id as string,
           data: { statusId: targetStatusId },
         })
+
+        // 2. Persist position via reorder endpoint
+        if (newPosition !== draggedWp.position) {
+          await reorderWorkPackage.mutateAsync({
+            workPackageId: active.id as string,
+            position: newPosition,
+          })
+        }
       } catch {
         // TODO: show error toast
       }
     },
-    [wpData, columns, updateWorkPackage]
+    [wpData, columns, updateWorkPackage, reorderWorkPackage]
   )
 
-  // ── Render ────────────────────────────────────────────────────────────────────
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
@@ -148,13 +169,33 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
             {wpData.length} work package{wpData.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <div className="flex items-center gap-2 text-xs text-gray-500">
-          {columns.map((col) =>
-            col.isOverLimit ? (
-              <span key={col.statusId} className="text-red-500">
-                ⚠️ {col.status.name} over limit
-              </span>
-            ) : null
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            {columns.map((col) =>
+              col.isOverLimit ? (
+                <span key={col.statusId} className="text-red-500">
+                  ⚠️ {col.status.name} over limit
+                </span>
+              ) : null
+            )}
+          </div>
+          {resolvedProjectId && (
+            <button
+              onClick={() => {
+                const statusId = prompt('Enter status ID to set WIP limit:')
+                if (!statusId) return
+                const limitStr = prompt('Enter WIP limit (empty = unlimited):')
+                const limit = limitStr === '' ? null : parseInt(limitStr, 10)
+                if (isNaN(limit) && limitStr !== '') return
+                import('@/hooks/use-wip-limits').then(({ useUpdateWipLimit }) => {
+                  // Use a refetch approach — for now, just reload the page
+                  window.location.reload()
+                })
+              }}
+              className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
+            >
+              Configure WIP Limits
+            </button>
           )}
         </div>
       </div>
@@ -182,14 +223,7 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
               ))}
 
               {columns.length === 0 && (
-                <div className="flex flex-col items-center justify-center w-full h-64 text-gray-400">
-                  <svg width="48" height="48" viewBox="0 0 48 48" fill="none" className="mb-3">
-                    <rect x="4" y="12" width="40" height="30" rx="3" stroke="currentColor" strokeWidth="2" />
-                    <line x1="4" y1="20" x2="44" y2="20" stroke="currentColor" strokeWidth="2" />
-                    <line x1="16" y1="4" x2="16" y2="42" stroke="currentColor" strokeWidth="2" />
-                  </svg>
-                  <p className="text-sm">No work packages to display.</p>
-                </div>
+                <WorkPackageBoardEmptyState />
               )}
             </div>
 

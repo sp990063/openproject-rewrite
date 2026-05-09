@@ -270,7 +270,18 @@ model Activity {
 }
 
 // ─────────────────────────────────────────────
-// QUERIES (saved filter + sort + display state)
+// PROJECT WIP LIMITS
+model ProjectWipLimit {
+  id        String  @id @default(cuid())
+  projectId String
+  statusId  String
+  limit     Int?    // null = no limit (unlimited)
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, statusId])
+  @@map("project_wip_limits")
+}
 model Query {
   id         String   @id @default(cuid())
   userId     String

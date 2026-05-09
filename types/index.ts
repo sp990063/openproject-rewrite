@@ -217,3 +217,11 @@ export interface Query {
 }
 
 export type SortBy = [string, 'asc' | 'desc']
+
+/** Per-status WIP limit for a project board */
+export interface ProjectWipLimit {
+  id: string
+  projectId: string
+  statusId: string
+  limit: number | null
+}
