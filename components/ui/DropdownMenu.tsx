@@ -9,13 +9,15 @@ interface DropdownMenuContentProps {
   children: React.ReactNode
   className?: string
   sideOffset?: number
+  align?: 'start' | 'center' | 'end'
 }
 
-export function DropdownMenuContent({ children, className, sideOffset = 4 }: DropdownMenuContentProps) {
+export function DropdownMenuContent({ children, className, sideOffset = 4, align = 'center' }: DropdownMenuContentProps) {
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
         sideOffset={sideOffset}
+        align={align}
         className={cn(
           'z-50 min-w-[8rem] overflow-hidden rounded-md bg-white p-1 shadow-lg border border-gray-200',
           'data-[state=open]:animate-in data-[state=closed]:animate-out',

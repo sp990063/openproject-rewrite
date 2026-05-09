@@ -1,6 +1,21 @@
 // hooks/useNotifications.ts
 // 通知列表查詢鉤子 + 未讀計數鉤子
 import { useQuery } from '@tanstack/react-query'
+import type { Notification } from '@/types/notification'
+
+interface NotificationsResponse {
+  success: boolean
+  data: {
+    notifications: Notification[]
+    meta: {
+      page: number
+      perPage: number
+      total: number
+      totalPages: number
+      unreadCount: number
+    }
+  }
+}
 
 interface UseNotificationsOptions {
   page?: number

@@ -2,6 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import { useSession, signOut } from 'next-auth/react'
 import { Button } from '@/components/ui'
+import { NotificationBell } from '@/components/notifications'
 import {
   DropdownMenu,
   DropdownMenuTrigger,
@@ -29,7 +30,11 @@ export function Header() {
 
       <div className="flex items-center gap-4">
         {session?.user ? (
-          <DropdownMenu>
+          <>
+            <Link href="/notifications">
+              <NotificationBell />
+            </Link>
+            <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="flex items-center gap-2 hover:bg-gray-100 rounded-lg px-3 py-2">
                 <div className="w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center text-white font-medium">
@@ -47,7 +52,8 @@ export function Header() {
                 Sign out
               </DropdownMenuItem>
             </DropdownMenuContent>
-          </DropdownMenu>
+            </DropdownMenu>
+          </>
         ) : (
           <Link href="/login">
             <Button variant="primary" size="sm">

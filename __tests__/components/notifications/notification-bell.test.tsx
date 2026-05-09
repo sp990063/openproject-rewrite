@@ -1,24 +1,56 @@
 import { describe, it, expect, vi } from 'vitest'
 import { render, screen } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import React from 'react'
 
 // ─── Mock hooks ───────────────────────────────────────────────────────────────
 vi.mock('@/hooks/useNotifications', () => ({
   useUnreadCount: vi.fn(),
+  useNotifications: vi.fn(),
+}))
+
+vi.mock('@/hooks/useNotificationMutations', () => ({
+  useMarkNotificationAsRead: vi.fn(() => ({
+    mutate: vi.fn(),
+    mutateAsync: vi.fn(),
+    isPending: false,
+  })),
 }))
 
 // ─── Import component under test ─────────────────────────────────────────────
 import { NotificationBell } from '@/components/notifications/NotificationBell'
-import { useUnreadCount } from '@/hooks/useNotifications'
+import { useUnreadCount, useNotifications } from '@/hooks/useNotifications'
+
+const mockNotification = {
+  id: 'notif-1',
+  userId: 'user-1',
+  reason: 'mentioned' as const,
+  projectId: 'proj-1',
+  projectName: 'Test Project',
+  resourceType: 'work_package' as const,
+  resourceId: 'wp-1',
+  resourceSubject: 'Test Work Package',
+  actorId: 'actor-1',
+  actorName: 'John Doe',
+  read: false,
+  readAt: null,
+  createdAt: new Date().toISOString(),
+}
 
 // ─── NotificationBell ─────────────────────────────────────────────────────────
 
 describe('NotificationBell', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
   // ✅ VALID: renders bell icon
   it('renders bell icon', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 0,
+      isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [], meta: { page: 1, perPage: 20, total: 0, totalPages: 0, unreadCount: 0 } } },
       isLoading: false,
     } as any)
 
@@ -26,7 +58,6 @@ describe('NotificationBell', () => {
 
     const bellButton = screen.getByRole('button', { name: /notifications/i })
     expect(bellButton).toBeInTheDocument()
-    // Bell SVG should be present
     const svg = bellButton.querySelector('svg')
     expect(svg).toBeInTheDocument()
   })
@@ -36,11 +67,14 @@ describe('NotificationBell', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 0,
       isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [], meta: { page: 1, perPage: 20, total: 0, totalPages: 0, unreadCount: 0 } } },
+      isLoading: false,
     } as any)
 
     render(<NotificationBell />)
 
-    // No red badge should be visible
     const badges = document.querySelectorAll('.bg-red-500')
     expect(badges.length).toBe(0)
   })
@@ -49,6 +83,10 @@ describe('NotificationBell', () => {
   it('shows badge with count when unread count is between 1 and 99', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 5,
+      isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [mockNotification], meta: { page: 1, perPage: 20, total: 1, totalPages: 1, unreadCount: 5 } } },
       isLoading: false,
     } as any)
 
@@ -64,6 +102,10 @@ describe('NotificationBell', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 150,
       isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [], meta: { page: 1, perPage: 20, total: 0, totalPages: 0, unreadCount: 150 } } },
+      isLoading: false,
     } as any)
 
     render(<NotificationBell />)
@@ -78,11 +120,14 @@ describe('NotificationBell', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 10,
       isLoading: true,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: undefined,
+      isLoading: true,
     } as any)
 
     render(<NotificationBell />)
 
-    // While loading, badge should not appear even though data exists
     const badgeInDocument = document.querySelector('.bg-red-500')
     expect(badgeInDocument).not.toBeInTheDocument()
   })
@@ -91,6 +136,10 @@ describe('NotificationBell', () => {
   it('has aria-label that includes unread count when present', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 7,
+      isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [], meta: { page: 1, perPage: 20, total: 0, totalPages: 0, unreadCount: 7 } } },
       isLoading: false,
     } as any)
 
@@ -105,11 +154,15 @@ describe('NotificationBell', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 0,
       isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [], meta: { page: 1, perPage: 20, total: 0, totalPages: 0, unreadCount: 0 } } },
+      isLoading: false,
     } as any)
 
     render(<NotificationBell />)
 
-    const bellButton = screen.getByRole('button', { name: 'Notifications' })
+    const bellButton = screen.getByRole('button', { name: /^Notifications$/i })
     expect(bellButton).toBeInTheDocument()
   })
 
@@ -118,11 +171,15 @@ describe('NotificationBell', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 0,
       isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [], meta: { page: 1, perPage: 20, total: 0, totalPages: 0, unreadCount: 0 } } },
+      isLoading: false,
     } as any)
 
     render(<NotificationBell />)
 
-    const bellButton = screen.getByRole('button')
+    const bellButton = screen.getByRole('button', { name: /^Notifications$/i })
     expect(bellButton.className).toContain('hover:bg-gray-100')
   })
 
@@ -131,14 +188,16 @@ describe('NotificationBell', () => {
     vi.mocked(useUnreadCount).mockReturnValue({
       data: 3,
       isLoading: false,
+    })
+    vi.mocked(useNotifications).mockReturnValue({
+      data: { data: { notifications: [mockNotification], meta: { page: 1, perPage: 20, total: 1, totalPages: 1, unreadCount: 3 } } },
+      isLoading: false,
     } as any)
 
     render(<NotificationBell />)
 
     const badge = screen.getByText('3')
-    // The badge span should have absolute positioning and be inside a relative parent
     expect(badge.parentElement).toBeInTheDocument()
-    // The badge itself should have absolute class
     expect(badge.className).toContain('absolute')
   })
 })
