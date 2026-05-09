@@ -30,10 +30,10 @@
 
 ### Phase 2.4: Table View
 
-- [ ] **p2-011**: `WorkPackageTable.tsx` — Main container + `@tanstack/react-virtual` virtual scrolling
-- [ ] **p2-012**: `WorkPackageTableHeader.tsx` — Sortable columns
-- [ ] **p2-013**: `WorkPackageFilters.tsx` — Filter bar (status/type/assignee/priority/date-range/text)
-- [ ] **p2-014**: `WorkPackageInlineEdit.tsx` — Double-click edit + `editLockRef` to prevent race condition
+- [x] **p2-011**: `WorkPackageTable.tsx` — Main container + `@tanstack/react-virtual` virtual scrolling ✅
+- [x] **p2-012**: `WorkPackageTableHeader.tsx` — Sortable columns ✅
+- [x] **p2-013**: `WorkPackageFilters.tsx` — Filter bar (status/type/assignee/priority/date-range/text) ✅
+- [x] **p2-014**: `WorkPackageInlineEdit.tsx` — Double-click edit + `editLockRef` to prevent race condition ✅
 - [ ] **p2-015**: `WorkPackageTableRow.tsx` + `WorkPackageTableCell.tsx` + `WorkPackageBulkActions.tsx`
 
 ### Phase 2.5: Gantt View

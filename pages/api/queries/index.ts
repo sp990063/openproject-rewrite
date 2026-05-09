@@ -2,6 +2,20 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
+import { z } from 'zod'
+
+const createQuerySchema = z.object({
+  name: z.string().min(1, 'Name is required').max(255),
+  projectId: z.string().cuid().nullable().optional(),
+  filters: z.record(z.unknown()).default({}),
+  sortBy: z.array(z.object({
+    field: z.string(),
+    direction: z.enum(['asc', 'desc']).optional().default('asc'),
+  })).default([]),
+  groupBy: z.string().nullable().optional(),
+  displayMode: z.enum(['table', 'gantt', 'board', 'calendar']).default('table'),
+  isDefault: z.boolean().default(false),
+})
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const session = await getServerSession(req, res, authOptions)
@@ -22,31 +36,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 
   if (req.method === 'POST') {
-    const { name, projectId, filters, sortBy, groupBy, displayMode, isDefault } = req.body
+    try {
+      const data = createQuerySchema.parse(req.body)
 
-    if (!name?.trim()) return res.status(400).json({ error: 'Name is required' })
+      // If isDefault=true, unset other defaults for this user/project first
+      if (data.isDefault) {
+        await prisma.savedQuery.updateMany({
+          where: { userId, projectId: data.projectId ?? null },
+          data: { isDefault: false },
+        })
+      }
 
-    // If isDefault=true, unset other defaults for this user/project first
-    if (isDefault) {
-      await prisma.savedQuery.updateMany({
-        where: { userId, projectId: projectId ?? null },
-        data: { isDefault: false },
+      const query = await prisma.savedQuery.create({
+        data: {
+          userId,
+          projectId: data.projectId ?? null,
+          name: data.name,
+          filters: data.filters,
+          sortBy: data.sortBy,
+          groupBy: data.groupBy,
+          displayMode: data.displayMode,
+          isDefault: data.isDefault,
+        },
       })
+      return res.status(201).json(query)
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: 'Validation failed', details: error.issues })
+      }
+      throw error
     }
-
-    const query = await prisma.savedQuery.create({
-      data: {
-        userId,
-        projectId: projectId ?? null,
-        name: name.trim(),
-        filters: filters ?? {},
-        sortBy: sortBy ?? [],
-        groupBy: groupBy ?? null,
-        displayMode: displayMode ?? 'table',
-        isDefault: isDefault ?? false,
-      },
-    })
-    return res.status(201).json(query)
   }
 
   return res.status(405).json({ error: 'Method not allowed' })

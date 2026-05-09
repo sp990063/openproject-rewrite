@@ -1,6 +1,7 @@
 import React from 'react'
 import { format } from 'date-fns'
-import type { CalendarViewMode } from './WorkPackageCalendar'
+
+export type CalendarViewMode = 'month' | 'week'
 
 interface WorkPackageCalendarHeaderProps {
   currentDate: Date

@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useRef,
   useMemo,
+  useEffect,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useVirtualizer } from '@tanstack/react-virtual'
@@ -42,12 +43,21 @@ interface WorkPackageTableProps {
   initialSort?: SortState | null
   /** Override projectId for the work package query */
   projectId?: string
+  /** Called whenever the user changes filters inside the table */
+  onFiltersChange?: (filters: WorkPackageFilter) => void
+  /** Called when the user clicks the Save button in the filter bar */
+  onSave?: () => void
+  /** Whether a save operation is in progress */
+  isSaving?: boolean
 }
 
 export function WorkPackageTable({
   initialFilters = {},
   initialSort = null,
   projectId,
+  onFiltersChange,
+  onSave,
+  isSaving,
 }: WorkPackageTableProps) {
   const router = useRouter()
   const queryProjectId = router.query.projectId as string | undefined
@@ -73,6 +83,21 @@ export function WorkPackageTable({
   const { workPackages } = useWorkPackages(filters as WorkPackageFilter)
   const updateWorkPackage = useUpdateWorkPackage()
   const deleteWorkPackage = useDeleteWorkPackage()
+
+  // Track whether we've processed the initialFilters to avoid calling onFiltersChange on mount
+  const initRef = useRef(false)
+  useEffect(() => {
+    if (!initRef.current) {
+      initRef.current = true
+    }
+  })
+  // Propagate filter changes to parent (skip on mount)
+  useEffect(() => {
+    if (!initRef.current) return
+    if (onFiltersChange) {
+      onFiltersChange(filters as WorkPackageFilter)
+    }
+  }, [filters, onFiltersChange])
 
   // ── Filter lookup options (fetched from API) ──────────────────────────────────
   const { data: statuses = [] } = useQuery<Status[]>({
@@ -336,6 +361,8 @@ export function WorkPackageTable({
           onFiltersChange={setFilters as (f: WorkPackageFilter) => void}
           options={filterOptions}
           onReset={handleResetFilters}
+          onSave={onSave}
+          isSaving={isSaving}
         />
       </div>
 

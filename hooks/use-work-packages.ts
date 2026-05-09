@@ -5,17 +5,17 @@ import type {
 } from '@/types'
 import { queryKeys } from '@/queries/queryKeys'
 
-// ─── Shared input types (used across hooks) ─────────────────────────────────
+// ─── Shared input types ───────────────────────────────────────────────────────
 
 export interface CreateWorkPackageInput {
   projectId: string
   subject: string
   description?: string
   statusId: string
-  typeId?: string    // optional — API defaults to project default type
+  typeId?: string     // optional — API defaults to project default type
   priorityId?: string // optional — API defaults to default priority
   assigneeId?: string
-  authorId?: string  // optional — API defaults to current user
+  authorId?: string   // optional — API defaults to current user
   startDate?: string
   dueDate?: string
   estimatedHours?: number
@@ -36,87 +36,152 @@ export interface UpdateWorkPackageInput {
   position?: number
 }
 
-// ─── Phase 1 hooks (extended) ───────────────────────────────────────────────
+// ─── Fetch helpers ────────────────────────────────────────────────────────────
+
+async function fetchWorkPackages(filters?: WorkPackageFilter): Promise<WorkPackage[]> {
+  const params = new URLSearchParams()
+  if (filters?.projectId) params.set('projectId', filters.projectId)
+  if (filters?.statusId?.length) params.set('statusId', filters.statusId.join(','))
+  if (filters?.typeId?.length) params.set('typeId', filters.typeId.join(','))
+  if (filters?.assigneeId?.length) params.set('assigneeId', filters.assigneeId.join(','))
+  if (filters?.priorityId?.length) params.set('priorityId', filters.priorityId.join(','))
+  if (filters?.startDate?.gte) params.set('startDateGte', filters.startDate.gte)
+  if (filters?.startDate?.lte) params.set('startDateLte', filters.startDate.lte)
+  if (filters?.dueDate?.gte) params.set('dueDateGte', filters.dueDate.gte)
+  if (filters?.dueDate?.lte) params.set('dueDateLte', filters.dueDate.lte)
+  if (filters?.search) params.set('search', filters.search)
+
+  const url = `/api/work-packages${params.size ? `?${params}` : ''}`
+  const res = await fetch(url)
+  if (!res.ok) throw new Error('Failed to fetch work packages')
+  return res.json()
+}
+
+async function fetchWorkPackage(id: string): Promise<WorkPackage> {
+  const res = await fetch(`/api/work-packages/${id}`)
+  if (!res.ok) throw new Error('Failed to fetch work package')
+  return res.json()
+}
+
+async function createWorkPackage(data: CreateWorkPackageInput): Promise<WorkPackage> {
+  const res = await fetch('/api/work-packages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to create work package')
+  return res.json()
+}
+
+async function updateWorkPackage(
+  id: string,
+  data: UpdateWorkPackageInput
+): Promise<WorkPackage> {
+  const res = await fetch(`/api/work-packages/${id}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to update work package')
+  return res.json()
+}
+
+async function deleteWorkPackage(id: string): Promise<void> {
+  const res = await fetch(`/api/work-packages/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete work package')
+}
+
+async function fetchRelations(workPackageId: string) {
+  const res = await fetch(`/api/work-packages/${workPackageId}/relations`)
+  if (!res.ok) throw new Error('Failed to fetch relations')
+  return res.json()
+}
+
+async function createRelation(data: {
+  fromId: string
+  toId: string
+  relationType: 'blocks' | 'blocked_by' | 'precedes' | 'follows' | 'relates'
+}) {
+  const res = await fetch(`/api/work-packages/${data.fromId}/relations`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+  })
+  if (!res.ok) throw new Error('Failed to create relation')
+  return res.json()
+}
+
+async function deleteRelation(id: string): Promise<void> {
+  const res = await fetch(`/api/relations/${id}`, { method: 'DELETE' })
+  if (!res.ok) throw new Error('Failed to delete relation')
+}
+
+async function reorderWorkPackage({
+  workPackageId,
+  position,
+}: {
+  workPackageId: string
+  position: number
+}) {
+  const res = await fetch('/api/work-packages/reorder', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ workPackageId, position }),
+  })
+  if (!res.ok) throw new Error('Failed to reorder work package')
+  return res.json()
+}
+
+// ─── Query hooks ──────────────────────────────────────────────────────────────
 
 /**
  * List work packages with optional filters.
- * Phase 1: projectId filter only.
- * Phase 2: full WorkPackageFilter support.
+ * Filters: projectId, statusId[], typeId[], assigneeId[], priorityId[],
+ * startDate/lte/gte, dueDate/lte/gte, search
  */
 export function useWorkPackages(filters?: WorkPackageFilter) {
   const workPackages = useQuery({
     queryKey: queryKeys.workPackages(filters),
-    queryFn: async (): Promise<WorkPackage[]> => {
-      const params = new URLSearchParams()
-      if (filters?.projectId) params.set('projectId', filters.projectId)
-      if (filters?.statusId?.length) params.set('statusId', filters.statusId.join(','))
-      if (filters?.typeId?.length) params.set('typeId', filters.typeId.join(','))
-      if (filters?.assigneeId?.length) params.set('assigneeId', filters.assigneeId.join(','))
-      if (filters?.priorityId?.length) params.set('priorityId', filters.priorityId.join(','))
-      if (filters?.startDate?.gte) params.set('startDateGte', filters.startDate.gte)
-      if (filters?.startDate?.lte) params.set('startDateLte', filters.startDate.lte)
-      if (filters?.dueDate?.gte) params.set('dueDateGte', filters.dueDate.gte)
-      if (filters?.dueDate?.lte) params.set('dueDateLte', filters.dueDate.lte)
-      if (filters?.search) params.set('search', filters.search)
-
-      const url = `/api/work-packages${params.size ? `?${params}` : ''}`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('Failed to fetch work packages')
-      return res.json()
-    },
+    queryFn: () => fetchWorkPackages(filters),
+    // Enable when projectId is present, or when no filter needed
     enabled: !filters?.projectId || !!filters.projectId,
   })
 
   return { workPackages }
 }
 
-/** Phase 1: create a new work package */
-export function useCreateWorkPackage() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (data: CreateWorkPackageInput) => {
-      const res = await fetch('/api/work-packages', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to create work package')
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['work-packages'] })
-    },
-  })
-}
-
-/** Phase 1: delete a work package */
-export function useDeleteWorkPackage() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/work-packages/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete work package')
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['work-packages'] })
-    },
-  })
-}
-
-// ─── Phase 2 hooks ───────────────────────────────────────────────────────────
-
 /** Fetch a single work package by id */
 export function useWorkPackage(id: string | undefined) {
   return useQuery({
     queryKey: queryKeys.workPackage(id ?? ''),
-    queryFn: async (): Promise<WorkPackage> => {
-      const res = await fetch(`/api/work-packages/${id}`)
-      if (!res.ok) throw new Error('Failed to fetch work package')
-      return res.json()
-    },
+    queryFn: () => fetchWorkPackage(id!),
     enabled: !!id,
+  })
+}
+
+// ─── Mutation hooks ────────────────────────────────────────────────────────────
+
+/** Create a new work package */
+export function useCreateWorkPackage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: createWorkPackage,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-packages'] })
+    },
+  })
+}
+
+/** Delete a work package */
+export function useDeleteWorkPackage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: deleteWorkPackage,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-packages'] })
+    },
   })
 }
 
@@ -128,47 +193,98 @@ export function useUpdateWorkPackage() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: UpdateWorkPackageInput }) => {
-      const res = await fetch(`/api/work-packages/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to update work package')
-      return res.json()
-    },
+    mutationFn: ({ id, data }: { id: string; data: UpdateWorkPackageInput }) =>
+      updateWorkPackage(id, data),
+
     // Optimistic update: apply change immediately, revert on error
     onMutate: async ({ id, data }) => {
-      // Cancel any outgoing refetches
+      // Cancel any outgoing refetches so they don't overwrite our optimistic update
       await queryClient.cancelQueries({ queryKey: queryKeys.workPackage(id) })
 
       // Snapshot previous value for rollback
       const previousWp = queryClient.getQueryData<WorkPackage>(queryKeys.workPackage(id))
 
-      // Optimistically apply the update (only spread changed fields)
+      // Optimistically apply the update
       queryClient.setQueryData<WorkPackage>(queryKeys.workPackage(id), (old) =>
         old ? ({ ...old, ...data } as WorkPackage) : old
       )
 
       return { previousWp }
     },
+
     onError: (_err, { id }, context) => {
       // Rollback to snapshot on error
       if (context?.previousWp) {
         queryClient.setQueryData(queryKeys.workPackage(id), context.previousWp)
       }
       // Invalidate list queries to resync
-      queryClient.invalidateQueries({ queryKey: ['work-packages'] })
+      void queryClient.invalidateQueries({ queryKey: ['work-packages'] })
     },
+
     onSettled: (_data, _err, { id }) => {
-      // Always refetch after settle to ensure consistency
-      queryClient.invalidateQueries({ queryKey: queryKeys.workPackage(id) })
-      queryClient.invalidateQueries({ queryKey: ['work-packages'] })
+      // Always refetch after settle to ensure server consistency
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workPackage(id) })
+      void queryClient.invalidateQueries({ queryKey: ['work-packages'] })
     },
   })
 }
 
-/** Fetch activities for a work package */
+/** Reorder a work package within its group (board drag-and-drop) */
+export function useReorderWorkPackage() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: reorderWorkPackage,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['work-packages'] })
+    },
+  })
+}
+
+// ─── Relations ─────────────────────────────────────────────────────────────────
+
+/** Fetch relations for a work package */
+export function useWorkPackageRelations(workPackageId: string | undefined) {
+  return useQuery({
+    queryKey: queryKeys.workPackageRelations(workPackageId ?? ''),
+    queryFn: () => fetchRelations(workPackageId!),
+    enabled: !!workPackageId,
+  })
+}
+
+/** Create a new relation between two work packages */
+export function useCreateRelation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: createRelation,
+    onSuccess: (_data, vars) => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.workPackageRelations(vars.fromId),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.workPackageRelations(vars.toId),
+      })
+    },
+  })
+}
+
+/** Delete a relation */
+export function useDeleteRelation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: deleteRelation,
+    onSuccess: (_data, _vars, _ctx) => {
+      // Invalidate all relation caches (we don't know which WP pair was affected)
+      void queryClient.invalidateQueries({ queryKey: ['work-packages'] })
+    },
+  })
+}
+
+// ─── Activities ─────────────────────────────────────────────────────────────────
+
+/** Fetch activities/comments for a work package */
 export function useWorkPackageActivities(workPackageId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.workPackageActivities(workPackageId ?? ''),
@@ -180,202 +296,3 @@ export function useWorkPackageActivities(workPackageId: string | undefined) {
     enabled: !!workPackageId,
   })
 }
-
-/** Fetch relations for a work package */
-export function useWorkPackageRelations(workPackageId: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.workPackageRelations(workPackageId ?? ''),
-    queryFn: async () => {
-      const res = await fetch(`/api/work-packages/${workPackageId}/relations`)
-      if (!res.ok) throw new Error('Failed to fetch relations')
-      return res.json()
-    },
-    enabled: !!workPackageId,
-  })
-}
-
-/** Create a new relation between two work packages */
-export function useCreateRelation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (data: {
-      fromId: string
-      toId: string
-      relationType: 'blocks' | 'blocked_by' | 'precedes' | 'follows' | 'relates'
-    }) => {
-      const res = await fetch(`/api/work-packages/${data.fromId}/relations`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to create relation')
-      return res.json()
-    },
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.workPackageRelations(vars.fromId) })
-      queryClient.invalidateQueries({ queryKey: queryKeys.workPackageRelations(vars.toId) })
-    },
-  })
-}
-
-/** Delete a relation */
-export function useDeleteRelation() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/relations/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete relation')
-    },
-    onSuccess: () => {
-      // Invalidate all relation caches (we don't know which WP pair was affected)
-      queryClient.invalidateQueries({ queryKey: ['work-packages'] })
-    },
-  })
-}
-
-/** Reorder a work package within its group (board drag-and-drop) */
-export function useReorderWorkPackage() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ workPackageId, position }: { workPackageId: string; position: number }) => {
-      const res = await fetch('/api/work-packages/reorder', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ workPackageId, position }),
-      })
-      if (!res.ok) throw new Error('Failed to reorder work package')
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['work-packages'] })
-    },
-  })
-}
-
-// ─── Query Management ─────────────────────────────────────────────────────────
-
-export interface CreateQueryInput {
-  name: string
-  projectId?: string
-  filters: WorkPackageFilter
-  sortBy: [string, 'asc' | 'desc'][]
-  groupBy?: string
-  displayMode: 'table' | 'gantt' | 'board' | 'calendar'
-  isDefault?: boolean
-}
-
-export interface UpdateQueryInput {
-  name?: string
-  filters?: WorkPackageFilter
-  sortBy?: [string, 'asc' | 'desc'][]
-  groupBy?: string | null
-  displayMode?: 'table' | 'gantt' | 'board' | 'calendar'
-  isDefault?: boolean
-}
-
-/** List saved queries for the current user, optionally scoped to a project */
-export function useSavedQueries(projectId?: string) {
-  return useQuery({
-    queryKey: queryKeys.queries(projectId),
-    queryFn: async () => {
-      const params = new URLSearchParams()
-      if (projectId) params.set('projectId', projectId)
-      const url = `/api/queries${params.size ? `?${params}` : ''}`
-      const res = await fetch(url)
-      if (!res.ok) throw new Error('Failed to fetch saved queries')
-      return res.json()
-    },
-  })
-}
-
-/** Fetch a single saved query by id */
-export function useQueryById(id: string | undefined) {
-  return useQuery({
-    queryKey: queryKeys.query(id ?? ''),
-    queryFn: async () => {
-      const res = await fetch(`/api/queries/${id}`)
-      if (!res.ok) throw new Error('Failed to fetch query')
-      return res.json()
-    },
-    enabled: !!id,
-  })
-}
-
-/** Create a new saved query */
-export function useCreateQuery() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (data: CreateQueryInput) => {
-      const res = await fetch('/api/queries', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to create query')
-      return res.json()
-    },
-    onSuccess: (_data, vars) => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.queries(vars.projectId) })
-    },
-  })
-}
-
-/** Update an existing saved query */
-export function useUpdateQuery() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: UpdateQueryInput }) => {
-      const res = await fetch(`/api/queries/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
-      })
-      if (!res.ok) throw new Error('Failed to update query')
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['queries'] })
-    },
-  })
-}
-
-/** Delete a saved query */
-export function useDeleteQuery() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/queries/${id}`, { method: 'DELETE' })
-      if (!res.ok) throw new Error('Failed to delete query')
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['queries'] })
-    },
-  })
-}
-
-/** Set a query as the default for its project */
-export function useSetDefaultQuery() {
-  const queryClient = useQueryClient()
-
-  return useMutation({
-    mutationFn: async (id: string) => {
-      const res = await fetch(`/api/queries/${id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isDefault: true }),
-      })
-      if (!res.ok) throw new Error('Failed to set default query')
-      return res.json()
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['queries'] })
-    },
-  })
-}
-

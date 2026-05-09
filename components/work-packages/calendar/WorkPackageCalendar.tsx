@@ -1,6 +1,16 @@
 import React, { useState, useMemo, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import {
+  DndContext,
+  DragOverlay,
+  closestCenter,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragStartEvent,
+  type DragEndEvent,
+} from '@dnd-kit/core'
+import {
   startOfMonth,
   endOfMonth,
   startOfWeek,
@@ -8,19 +18,18 @@ import {
   eachDayOfInterval,
   format,
   isSameMonth,
-  isSameDay,
   addMonths,
   subMonths,
   addWeeks,
   subWeeks,
-  isToday,
 } from 'date-fns'
 import { useWorkPackages, useUpdateWorkPackage } from '@/hooks/use-work-packages'
 import { WorkPackageCalendarHeader } from './WorkPackageCalendarHeader'
 import { WorkPackageCalendarGrid } from './WorkPackageCalendarGrid'
-import type { WorkPackageFilter } from '@/types'
+import type { WorkPackageFilter, WorkPackage } from '@/types'
+import type { CalendarViewMode } from './WorkPackageCalendarHeader'
 
-export type CalendarViewMode = 'month' | 'week'
+export type { CalendarViewMode }
 
 interface WorkPackageCalendarProps {
   initialFilters?: Partial<WorkPackageFilter>
@@ -35,28 +44,31 @@ export function WorkPackageCalendar({ initialFilters = {}, projectId }: WorkPack
   const [viewMode, setViewMode] = useState<CalendarViewMode>('month')
   const [currentDate, setCurrentDate] = useState(new Date())
 
+  // ── DnD state ─────────────────────────────────────────────────────────────────
+  const [activeWpId, setActiveWpId] = useState<string | null>(null)
+
   // ── Date range for server-side filtering ────────────────────────────────────
-  const { dateRange, endDate } = useMemo(() => {
+  // CRITICAL: Date range is sent to the server which does the filtering.
+  // We do NOT load all work packages and filter client-side.
+  const { dateRange } = useMemo(() => {
     if (viewMode === 'month') {
       const monthStart = startOfMonth(currentDate)
       const monthEnd = endOfMonth(currentDate)
       return {
         dateRange: { gte: format(monthStart, 'yyyy-MM-dd'), lte: format(monthEnd, 'yyyy-MM-dd') },
-        endDate: undefined,
       }
     } else {
       const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 })
       const weekEnd = endOfWeek(currentDate, { weekStartsOn: 1 })
       return {
         dateRange: { gte: format(weekStart, 'yyyy-MM-dd'), lte: format(weekEnd, 'yyyy-MM-dd') },
-        endDate: undefined,
       }
     }
   }, [viewMode, currentDate])
 
   // ── Server-side filtering via useWorkPackages ───────────────────────────────
   // CRITICAL: Do NOT load all work packages and filter client-side.
-  // Use the date range to filter server-side.
+  // The API filters by date range server-side using the startDateGte/startDateLte params.
   const filters: WorkPackageFilter = {
     ...initialFilters,
     ...(resolvedProjectId ? { projectId: resolvedProjectId } : {}),
@@ -85,7 +97,7 @@ export function WorkPackageCalendar({ initialFilters = {}, projectId }: WorkPack
 
   // Group work packages by date for quick lookup
   const workPackagesByDate = useMemo(() => {
-    const map = new Map<string, typeof wpData>()
+    const map = new Map<string, WorkPackage[]>()
     for (const wp of wpData) {
       // Show in calendar if it starts on this date
       const dateKey = wp.startDate
@@ -105,6 +117,15 @@ export function WorkPackageCalendar({ initialFilters = {}, projectId }: WorkPack
     return map
   }, [wpData])
 
+  // ── DnD sensors ──────────────────────────────────────────────────────────────
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 8, // Require 8px movement before activating drag
+      },
+    })
+  )
+
   // ── Navigation ────────────────────────────────────────────────────────────────
   const goToPrev = useCallback(() => {
     if (viewMode === 'month') setCurrentDate((d) => subMonths(d, 1))
@@ -118,7 +139,7 @@ export function WorkPackageCalendar({ initialFilters = {}, projectId }: WorkPack
 
   const goToToday = useCallback(() => setCurrentDate(new Date()), [])
 
-  // ── Event handlers ────────────────────────────────────────────────────────────
+  // ── Event handlers ───────────────────────────────────────────────────────────
   const handleEventClick = useCallback(
     (wpId: string) => {
       if (resolvedProjectId) {
@@ -128,13 +149,28 @@ export function WorkPackageCalendar({ initialFilters = {}, projectId }: WorkPack
     [router, resolvedProjectId]
   )
 
-  // ── Drag to change dates ─────────────────────────────────────────────────────
-  const handleEventDrop = useCallback(
-    async (wpId: string, newDate: Date) => {
+  // ── DnD handlers ─────────────────────────────────────────────────────────────
+  const handleDragStart = useCallback((event: DragStartEvent) => {
+    setActiveWpId(event.active.id as string)
+  }, [])
+
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { active, over } = event
+      setActiveWpId(null)
+
+      if (!over) return
+
+      // over.id is the date string (yyyy-MM-dd) from the droppable cell
+      const newDateStr = over.id as string
+      if (!newDateStr || !/^\d{4}-\d{2}-\d{2}$/.test(newDateStr)) return
+      if (active.id === over.id) return // Dropped on same cell
+
       try {
+        // Update the work package's start date to the new date
         await updateWorkPackage.mutateAsync({
-          id: wpId,
-          data: { startDate: format(newDate, "yyyy-MM-dd'T'HH:mm:ss.SSSxxx") },
+          id: active.id as string,
+          data: { startDate: newDateStr },
         })
       } catch {
         // TODO: show error toast
@@ -143,34 +179,55 @@ export function WorkPackageCalendar({ initialFilters = {}, projectId }: WorkPack
     [updateWorkPackage]
   )
 
-  // ── Render ────────────────────────────────────────────────────────────────────
-  return (
-    <div className="flex flex-col h-full bg-white">
-      <WorkPackageCalendarHeader
-        currentDate={currentDate}
-        viewMode={viewMode}
-        onViewModeChange={setViewMode}
-        onPrev={goToPrev}
-        onNext={goToNext}
-        onToday={goToToday}
-      />
+  // ── Active work package for drag overlay ────────────────────────────────────
+  const activeWp = activeWpId ? wpData.find((wp) => wp.id === activeWpId) : null
 
-      <div className="flex-1 overflow-hidden">
-        {workPackages.isLoading ? (
-          <div className="flex items-center justify-center h-64 text-gray-400">Loading…</div>
-        ) : workPackages.isError ? (
-          <div className="flex items-center justify-center h-64 text-red-500">Failed to load work packages.</div>
-        ) : (
-          <WorkPackageCalendarGrid
-            days={days}
-            workPackagesByDate={workPackagesByDate}
-            viewMode={viewMode}
-            currentDate={currentDate}
-            onEventClick={handleEventClick}
-            onEventDrop={handleEventDrop}
-          />
-        )}
+  // ── Render ───────────────────────────────────────────────────────────────────
+  return (
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+    >
+      <div className="flex flex-col h-full bg-white">
+        <WorkPackageCalendarHeader
+          currentDate={currentDate}
+          viewMode={viewMode}
+          onViewModeChange={setViewMode}
+          onPrev={goToPrev}
+          onNext={goToNext}
+          onToday={goToToday}
+        />
+
+        <div className="flex-1 overflow-hidden">
+          {workPackages.isLoading ? (
+            <div className="flex items-center justify-center h-64 text-gray-400">Loading…</div>
+          ) : workPackages.isError ? (
+            <div className="flex items-center justify-center h-64 text-red-500">Failed to load work packages.</div>
+          ) : (
+            <WorkPackageCalendarGrid
+              days={days}
+              workPackagesByDate={workPackagesByDate}
+              viewMode={viewMode}
+              currentDate={currentDate}
+              onEventClick={handleEventClick}
+            />
+          )}
+        </div>
       </div>
-    </div>
+
+      {/* Drag overlay — shows a floating preview of the dragged event */}
+      <DragOverlay>
+        {activeWp ? (
+          <div
+            className="px-2 py-1 rounded text-xs font-medium text-white shadow-lg cursor-grabbing opacity-90"
+            style={{ backgroundColor: activeWp.type?.color ?? activeWp.status?.color ?? '#6366F1' }}
+          >
+            {activeWp.subject}
+          </div>
+        ) : null}
+      </DragOverlay>
+    </DndContext>
   )
 }

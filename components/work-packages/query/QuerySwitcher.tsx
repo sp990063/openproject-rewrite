@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useRef, useEffect } from 'react'
 import { useSavedQueries, useDeleteSavedQuery, useUpdateSavedQuery } from '@/hooks/use-queries'
 import { Button, Modal } from '@/components/ui'
 import type { Query } from '@/types'
@@ -8,6 +8,10 @@ interface QuerySwitcherProps {
   currentQueryId?: string | null
   onSelectQuery: (query: Query | null) => void // null = default (no saved query)
   onSaveQuery: () => void
+  /** Called when the default query is auto-selected on mount (so parent can track it) */
+  onDefaultLoaded?: (query: Query) => void
+  /** Called when user clicks Edit on a query */
+  onEditQuery?: (query: Query) => void
 }
 
 export function QuerySwitcher({
@@ -15,6 +19,8 @@ export function QuerySwitcher({
   currentQueryId,
   onSelectQuery,
   onSaveQuery,
+  onDefaultLoaded,
+  onEditQuery,
 }: QuerySwitcherProps) {
   const { data: queries = [], isLoading } = useSavedQueries(projectId)
   const deleteSavedQuery = useDeleteSavedQuery()
@@ -22,6 +28,21 @@ export function QuerySwitcher({
 
   const [showDropdown, setShowDropdown] = useState(false)
   const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null)
+
+  // Auto-select the default query on mount / when queries load
+  const prevQueriesLength = useRef(0)
+  useEffect(() => {
+    if (isLoading) return
+    if (queries.length === prevQueriesLength.current) return
+    prevQueriesLength.current = queries.length
+
+    if (!currentQueryId) {
+      const defaultQuery = queries.find((q) => q.isDefault)
+      if (defaultQuery && onDefaultLoaded) {
+        onDefaultLoaded(defaultQuery)
+      }
+    }
+  }, [queries, isLoading, currentQueryId, onDefaultLoaded])
 
   const currentQuery = queries.find((q) => q.id === currentQueryId)
 
@@ -114,15 +135,28 @@ export function QuerySwitcher({
                   {query.isDefault ? (
                     <span className="text-[10px] text-gray-400 px-1">Default</span>
                   ) : (
-                    <button
-                      onClick={(e) => { void handleSetDefault(e, query.id) }}
-                      className="p-1 text-gray-400 hover:text-gray-600 rounded"
-                      title="Set as default"
-                    >
-                      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
-                        <path d="M6 1L7.5 4.5L11 5L8.5 7.5L9 11L6 9.5L3 11L3.5 7.5L1 5L4.5 4.5L6 1Z" />
-                      </svg>
-                    </button>
+                    <>
+                      <button
+                        onClick={(e) => { void handleSetDefault(e, query.id) }}
+                        className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                        title="Set as default"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+                          <path d="M6 1L7.5 4.5L11 5L8.5 7.5L9 11L6 9.5L3 11L3.5 7.5L1 5L4.5 4.5L6 1Z" />
+                        </svg>
+                      </button>
+                      {onEditQuery && (
+                        <button
+                          onClick={(e) => { e.stopPropagation(); onEditQuery(query) }}
+                          className="p-1 text-gray-400 hover:text-gray-600 rounded"
+                          title="Edit query"
+                        >
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M8.5 1.5L10.5 3.5L4 10H2V8L8.5 1.5Z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
+                          </svg>
+                        </button>
+                      )}
+                    </>
                   )}
                   <button
                     onClick={(e) => { void handleDelete(e, query.id) }}

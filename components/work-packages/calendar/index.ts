@@ -5,4 +5,4 @@ export { WorkPackageCalendarGrid } from './WorkPackageCalendarGrid'
 export { WorkPackageCalendarEmptyState } from './WorkPackageCalendarEmptyState'
 export { WorkPackageCalendarSkeleton } from './WorkPackageCalendarSkeleton'
 
-export type { CalendarViewMode } from './WorkPackageCalendar'
+export type { CalendarViewMode } from './WorkPackageCalendarHeader'

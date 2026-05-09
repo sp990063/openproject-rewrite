@@ -1,5 +1,7 @@
 import React, { useMemo } from 'react'
 import { format, isSameMonth, isToday, startOfWeek, addDays } from 'date-fns'
+import { useDroppable } from '@dnd-kit/core'
+import { useDraggable } from '@dnd-kit/core'
 import type { WorkPackage } from '@/types'
 import type { CalendarViewMode } from './WorkPackageCalendar'
 
@@ -9,8 +11,9 @@ interface WorkPackageCalendarGridProps {
   viewMode: CalendarViewMode
   currentDate: Date
   onEventClick: (wpId: string) => void
-  onEventDrop: (wpId: string, newDate: Date) => void
 }
+
+// ─── CalendarGrid ───────────────────────────────────────────────────────────────
 
 export function WorkPackageCalendarGrid({
   days,
@@ -18,7 +21,6 @@ export function WorkPackageCalendarGrid({
   viewMode,
   currentDate,
   onEventClick,
-  onEventDrop,
 }: WorkPackageCalendarGridProps) {
   const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 
@@ -39,7 +41,7 @@ export function WorkPackageCalendarGrid({
 
         {/* Calendar days grid */}
         <div className="grid grid-cols-7 flex-1 overflow-auto">
-          {days.map((day, idx) => {
+          {days.map((day) => {
             const dateKey = format(day, 'yyyy-MM-dd')
             const dayWps = workPackagesByDate.get(dateKey) ?? []
             const isCurrentMonth = isSameMonth(day, currentDate)
@@ -48,12 +50,12 @@ export function WorkPackageCalendarGrid({
             return (
               <CalendarDayCell
                 key={dateKey}
+                dateKey={dateKey}
                 day={day}
                 workPackages={dayWps}
                 isCurrentMonth={isCurrentMonth}
                 isToday={isDayToday}
                 onEventClick={onEventClick}
-                onEventDrop={onEventDrop}
                 compact
               />
             )
@@ -86,33 +88,27 @@ export function WorkPackageCalendarGrid({
         ))}
       </div>
 
-      {/* Hourly rows */}
+      {/* Week view: 7 equal columns, each independently scrollable */}
       <div className="flex-1 overflow-auto">
-        {weekDaysFull.map((day) => {
-          const dateKey = format(day, 'yyyy-MM-dd')
-          const dayWps = workPackagesByDate.get(dateKey) ?? []
+        <div className="grid grid-cols-7 h-full">
+          {weekDaysFull.map((day) => {
+            const dateKey = format(day, 'yyyy-MM-dd')
+            const dayWps = workPackagesByDate.get(dateKey) ?? []
 
-          return (
-            <div
-              key={dateKey}
-              className="flex flex-col border-r border-gray-100 min-h-[120px]"
-            >
-              {dayWps.map((wp) => (
-                <CalendarEventPill
-                  key={wp.id}
-                  workPackage={wp}
-                  onClick={() => onEventClick(wp.id)}
-                  compact={false}
-                />
-              ))}
-              {dayWps.length === 0 && (
-                <div className="flex-1 p-2 text-xs text-gray-300 italic">
-                  No events
-                </div>
-              )}
-            </div>
-          )
-        })}
+            return (
+              <CalendarDayCell
+                key={dateKey}
+                dateKey={dateKey}
+                day={day}
+                workPackages={dayWps}
+                isCurrentMonth={true}
+                isToday={isToday(day)}
+                onEventClick={onEventClick}
+                compact={false}
+              />
+            )
+          })}
+        </div>
       </div>
     </div>
   )
@@ -121,16 +117,17 @@ export function WorkPackageCalendarGrid({
 // ─── CalendarDayCell ───────────────────────────────────────────────────────────
 
 interface CalendarDayCellProps {
+  dateKey: string
   day: Date
   workPackages: WorkPackage[]
   isCurrentMonth: boolean
   isToday: boolean
   onEventClick: (wpId: string) => void
-  onEventDrop: (wpId: string, newDate: Date) => void
   compact: boolean
 }
 
 function CalendarDayCell({
+  dateKey,
   day,
   workPackages,
   isCurrentMonth,
@@ -138,12 +135,21 @@ function CalendarDayCell({
   onEventClick,
   compact,
 }: CalendarDayCellProps) {
+  // Make each day cell a droppable target for drag-and-drop
+  const { setNodeRef, isOver } = useDroppable({
+    id: dateKey,
+    data: { type: 'calendar-cell', date: dateKey },
+  })
+
   return (
     <div
+      ref={setNodeRef}
       className={`
         flex flex-col border-b border-r border-gray-100 p-1 min-h-[80px] text-xs
         ${isCurrentMonth ? 'bg-white' : 'bg-gray-50'}
         ${isToday ? 'ring-2 ring-inset ring-blue-400' : ''}
+        ${isOver ? 'bg-blue-50' : ''}
+        transition-colors
       `}
     >
       {/* Date number */}
@@ -160,7 +166,7 @@ function CalendarDayCell({
       {/* Work package events */}
       <div className="flex flex-col gap-0.5 overflow-hidden">
         {workPackages.slice(0, compact ? 3 : 10).map((wp) => (
-          <CalendarEventPill
+          <DraggableEventPill
             key={wp.id}
             workPackage={wp}
             onClick={() => onEventClick(wp.id)}
@@ -177,38 +183,47 @@ function CalendarDayCell({
   )
 }
 
-// ─── CalendarEventPill ─────────────────────────────────────────────────────────
+// ─── DraggableEventPill ────────────────────────────────────────────────────────
 
-interface CalendarEventPillProps {
+interface DraggableEventPillProps {
   workPackage: WorkPackage
   onClick: () => void
   compact: boolean
 }
 
-function CalendarEventPill({ workPackage: wp, onClick, compact }: CalendarEventPillProps) {
+function DraggableEventPill({ workPackage: wp, onClick, compact }: DraggableEventPillProps) {
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: wp.id,
+    data: { type: 'work-package', workPackage: wp },
+  })
+
   const color = wp.type?.color ?? wp.status?.color ?? '#6366F1'
 
-  if (compact) {
-    return (
-      <button
-        onClick={(e) => { e.stopPropagation(); onClick() }}
-        className="w-full text-left truncate rounded px-1 py-0.5 text-[10px] font-medium text-white hover:opacity-90 transition-opacity"
-        style={{ backgroundColor: color }}
-        title={wp.subject}
-      >
-        {wp.subject}
-      </button>
-    )
-  }
-
-  return (
+  const pill = compact ? (
     <button
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
       onClick={(e) => { e.stopPropagation(); onClick() }}
-      className="w-full text-left rounded px-2 py-1 mb-1 text-xs font-medium text-white hover:opacity-90 transition-opacity shadow-sm"
-      style={{ backgroundColor: color }}
+      className="w-full text-left truncate rounded px-1 py-0.5 text-[10px] font-medium text-white hover:opacity-90 transition-opacity cursor-grab active:cursor-grabbing"
+      style={{ backgroundColor: color, opacity: isDragging ? 0.4 : 1 }}
+      title={wp.subject}
+    >
+      {wp.subject}
+    </button>
+  ) : (
+    <button
+      ref={setNodeRef}
+      {...listeners}
+      {...attributes}
+      onClick={(e) => { e.stopPropagation(); onClick() }}
+      className="w-full text-left rounded px-2 py-1 mb-1 text-xs font-medium text-white hover:opacity-90 transition-opacity shadow-sm cursor-grab active:cursor-grabbing"
+      style={{ backgroundColor: color, opacity: isDragging ? 0.4 : 1 }}
       title={wp.subject}
     >
       {wp.subject}
     </button>
   )
+
+  return pill
 }

@@ -49,12 +49,76 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function getWorkPackages(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { projectId, statusId, assigneeId } = req.query
+    const {
+      projectId,
+      statusId,
+      assigneeId,
+      startDateGte,
+      startDateLte,
+      dueDateGte,
+      dueDateLte,
+    } = req.query
 
-    const where: Record<string, string> = {}
+    // Build a Prisma where clause with AND conditions for date range filtering
+    // CRITICAL: Date range filtering happens server-side, NOT client-side.
+    // The calendar view sends startDateGte/startDateLte to fetch only work packages
+    // whose startDate OR dueDate falls within the visible range.
+    const where: Record<string, unknown> = {}
     if (projectId) where.projectId = projectId as string
     if (statusId) where.statusId = statusId as string
     if (assigneeId) where.assigneeId = assigneeId as string
+
+    // Server-side date range: work packages that have ANY overlap with the visible range.
+    // A WP overlaps if: WP.startDate <= rangeEnd AND WP.dueDate >= rangeStart
+    // We use OR to match work packages that EITHER have their start OR due date in range,
+    // or whose span covers the range. This ensures we don't miss any WP visible on the calendar.
+    const dateFilters: unknown[] = []
+    if (startDateGte || startDateLte || dueDateGte || dueDateLte) {
+      const rangeStart = startDateGte as string | undefined
+      const rangeEnd = startDateLte as string | undefined
+
+      // WP overlaps the visible window if:
+      // (startDate <= rangeEnd) AND (dueDate >= rangeStart)
+      // For WPs with only startDate (no dueDate): treat dueDate = startDate
+      // For WPs with only dueDate (no startDate): treat startDate = dueDate
+      dateFilters.push({
+        OR: [
+          // Case 1: WP has both startDate and dueDate
+          {
+            AND: [
+              { startDate: { not: null } },
+              { dueDate: { not: null } },
+              { startDate: rangeEnd ? { lte: new Date(rangeEnd) } : undefined },
+              { dueDate: rangeStart ? { gte: new Date(rangeStart) } : undefined },
+            ],
+          },
+          // Case 2: WP has only startDate (no dueDate) - spans from startDate indefinitely
+          {
+            AND: [
+              { startDate: { not: null } },
+              { dueDate: null },
+              { startDate: rangeEnd ? { lte: new Date(rangeEnd) } : undefined },
+            ],
+          },
+          // Case 3: WP has only dueDate (no startDate) - spans up to dueDate
+          {
+            AND: [
+              { startDate: null },
+              { dueDate: { not: null } },
+              { dueDate: rangeStart ? { gte: new Date(rangeStart) } : undefined },
+            ],
+          },
+          // Case 4: WP has neither startDate nor dueDate - shown always (not filtered by date)
+          {
+            AND: [{ startDate: null }, { dueDate: null }],
+          },
+        ],
+      })
+    }
+
+    if (dateFilters.length > 0) {
+      where.AND = dateFilters
+    }
 
     const workPackages = await prisma.workPackage.findMany({
       where,

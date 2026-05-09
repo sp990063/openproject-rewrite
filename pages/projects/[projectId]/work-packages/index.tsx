@@ -44,6 +44,8 @@ export default function WorkPackagesPage() {
   const [sort] = useState<SortState | null>(null)
   const [groupBy] = useState<string | null>(null)
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
+  const [editingQuery, setEditingQuery] = useState<Query | null>(null)
+  const [isSavingQuery, setIsSavingQuery] = useState(false)
 
   // ── Create Work Package modal ─────────────────────────────────────────────────
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -69,6 +71,16 @@ export default function WorkPackagesPage() {
       setFilters({ projectId: projectId as string })
     }
   }, [projectId])
+
+  // ── Filter changes from Table/Gantt/Board/Calendar ─────────────────────────
+  const handleFiltersChange = useCallback((newFilters: WorkPackageFilter) => {
+    setFilters(newFilters)
+  }, [])
+
+  // ── Open Save dialog (from filter bar or QuerySwitcher) ─────────────────────
+  const handleOpenSaveDialog = useCallback(() => {
+    setIsSaveDialogOpen(true)
+  }, [])
 
   // ── Create Work Package ────────────────────────────────────────────────────────
   const handleCreateWP = async (e: React.FormEvent) => {
@@ -126,7 +138,7 @@ export default function WorkPackagesPage() {
               projectId={projectId as string}
               currentQueryId={currentQuery?.id}
               onSelectQuery={handleSelectQuery}
-              onSaveQuery={() => setIsSaveDialogOpen(true)}
+              onSaveQuery={handleOpenSaveDialog}
             />
 
             <Tabs value={viewMode} onValueChange={(v) => handleViewChange(v as ViewMode)}>
@@ -149,6 +161,9 @@ export default function WorkPackagesPage() {
               initialFilters={resolvedFilters}
               initialSort={sort}
               projectId={projectId as string}
+              onFiltersChange={handleFiltersChange}
+              onSave={handleOpenSaveDialog}
+              isSaving={isSavingQuery}
             />
           </div>
           <div className={viewMode === 'gantt' ? 'block' : 'hidden'} style={{ height: '100%' }}>
@@ -215,15 +230,22 @@ export default function WorkPackagesPage() {
       {/* Save Query Dialog */}
       <SaveQueryDialog
         open={isSaveDialogOpen}
-        onOpenChange={setIsSaveDialogOpen}
+        onOpenChange={(open) => {
+          setIsSaveDialogOpen(open)
+          if (!open) {
+            setEditingQuery(null)
+          }
+        }}
         currentFilters={filters as WorkPackageFilter}
         currentSortBy={sortBy}
         currentGroupBy={groupBy}
         displayMode={viewMode}
         projectId={projectId as string}
-        editingQuery={undefined}
+        editingQuery={editingQuery}
         onSaved={(query) => {
           setCurrentQuery(query)
+          setIsSaveDialogOpen(false)
+          setEditingQuery(null)
         }}
       />
     </AuthenticatedLayout>

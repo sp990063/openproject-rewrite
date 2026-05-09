@@ -25,10 +25,10 @@ const mockItem = (overrides: Partial<GanttWorkPackage> = {}): GanttWorkPackage =
   statusId: 's1',
   priorityId: 'p1',
   assigneeId: null,
-  startDate: '2026-06-01',
-  dueDate: '2026-06-15',
+  authorId: 'author1',
+  startDate: new Date('2026-06-01'),
+  dueDate: new Date('2026-06-15'),
   estimatedHours: null,
-  storyPoints: null,
   createdAt: new Date(),
   updatedAt: new Date(),
   start: new Date('2026-06-01'),
@@ -37,7 +37,7 @@ const mockItem = (overrides: Partial<GanttWorkPackage> = {}): GanttWorkPackage =
   progress: 50,
   left: 100,
   width: 112,
-  status: { id: 's1', name: 'In Progress', color: '#3B82F6', isClosed: false, position: 1, createdAt: new Date(), updatedAt: new Date() },
+  status: { id: 's1', name: 'In Progress', color: '#3B82F6', isClosed: false, position: 1 },
   ...overrides,
 })
 
