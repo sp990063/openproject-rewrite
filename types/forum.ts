@@ -1,5 +1,7 @@
 // ─── Phase 4: Forum Types ────────────────────────────────────────────────────
 
+import type { Project, User } from './index'
+
 export interface Forum {
   id: string
   projectId: string
@@ -77,17 +79,4 @@ export interface UpdatePostInput {
   content: string
 }
 
-// ─── Shared picks ────────────────────────────────────────────────────────────
 
-type User = {
-  id: string
-  name: string
-  email?: string
-  avatarUrl?: string | null
-}
-
-type Project = {
-  id: string
-  name: string
-  identifier: string
-}

@@ -255,3 +255,15 @@ export interface WikiPageVersion {
   createdAt: Date
   author?: { id: string; name: string; email: string; avatarUrl: string | null }
 }
+
+// ─── Phase 4: Forum Types (re-exported from forum.ts) ───────────────────────
+
+export type { Forum, ForumThread, ForumPost, CreateForumInput, UpdateForumInput, CreateThreadInput, UpdateThreadInput, CreatePostInput, UpdatePostInput } from './forum'
+
+// ─── Phase 4: Document Types ─────────────────────────────────────────────────
+
+export type { ProjectDocument, ProjectDocumentFolder, CreateDocumentInput, UpdateDocumentInput, CreateFolderInput, UpdateFolderInput } from './document'
+
+// ─── Global Search Types ──────────────────────────────────────────────────────
+
+export type { SearchResult, SearchResultType, SearchResponse, SearchFilters, SearchParams } from './search'
