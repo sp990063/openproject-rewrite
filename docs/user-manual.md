@@ -1,6 +1,6 @@
 # OpenProject 用戶手冊
 
-> **版本：** 1.0 | **最後更新：** 2026-05-09
+> **版本：** 1.1 | **最後更新：** 2026-05-13
 > **適用版本：** OpenProject Rewrite (Phase 1-6)
 
 ---
@@ -66,25 +66,11 @@
 
 ## 2. 主頁（Landing Page）
 
-未登入用戶訪問 `/` 會看到產品介紹頁。
+未登入用戶訪問 `/` 會看到產品介紹頁，包含系統名稱與功能概述。
 
-![主頁 Hero 區](images-manual/01-landing-hero.png)
+![主頁](images-manual/01-landing-hero.png)
 
-**Hero 區塊** — 大標題「OpenProject」，副標題描述系統功能。
-
-向下滾動查看功能介紹卡片：
-
-![主頁功能介紹](images-manual/01-landing-features.png)
-
-**四大功能模組：**
-- **Tasks & Bugs** — 追蹤工作與問題
-- **Gantt Charts** — 規劃時間線
-- **Team Boards** — 視覺化工作流程
-- **Calendars** — 排程事件
-
-頁面底部包含固定位置的登入表單：
-
-![主頁登入卡片](images-manual/01-landing-login-card.png)
+**主頁截圖** — 展示系統標題與功能說明。向下滾動可查看更多介紹，頁面底部包含固定登入入口。
 
 ---
 
