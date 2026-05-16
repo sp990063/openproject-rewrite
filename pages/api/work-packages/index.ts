@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { emitActivity } from '@/lib/activity'
 
 const createWorkPackageSchema = z.object({
   projectId: z.string().cuid(),
@@ -47,6 +48,38 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   }
 }
 
+function escapeCSV(value: unknown): string {
+  if (value === null || value === undefined) return ''
+  const str = String(value)
+  // Escape quotes and wrap in quotes if contains comma, quote, or newline
+  if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+    return '"' + str.replace(/"/g, '""') + '"'
+  }
+  return str
+}
+
+function formatCSVRow(workPackage: {
+  id: string
+  subject: string
+  status: { name: string }
+  type: { name: string }
+  assignee: { name: string } | null
+  priority: { name: string }
+  dueDate: Date | null
+  estimatedHours: number | null
+}): string {
+  return [
+    workPackage.id,
+    escapeCSV(workPackage.subject),
+    escapeCSV(workPackage.status.name),
+    escapeCSV(workPackage.type.name),
+    escapeCSV(workPackage.assignee?.name ?? ''),
+    escapeCSV(workPackage.priority.name),
+    workPackage.dueDate ? workPackage.dueDate.toISOString().split('T')[0] : '',
+    workPackage.estimatedHours ?? '',
+  ].join(',')
+}
+
 async function getWorkPackages(req: NextApiRequest, res: NextApiResponse) {
   try {
     const {
@@ -57,7 +90,10 @@ async function getWorkPackages(req: NextApiRequest, res: NextApiResponse) {
       startDateLte,
       dueDateGte,
       dueDateLte,
+      format,
     } = req.query
+
+    const isCSV = format === 'csv'
 
     // Build a Prisma where clause with AND conditions for date range filtering
     // CRITICAL: Date range filtering happens server-side, NOT client-side.
@@ -133,6 +169,16 @@ async function getWorkPackages(req: NextApiRequest, res: NextApiResponse) {
       orderBy: [{ position: 'asc' }, { createdAt: 'desc' }],
     })
 
+    // CSV export
+    if (isCSV) {
+      const header = 'ID,Subject,Status,Type,Assignee,Priority,Due Date,Estimated Hours'
+      const rows = workPackages.map(formatCSVRow).join('\n')
+      const csv = header + '\n' + rows
+      res.setHeader('Content-Type', 'text/csv')
+      res.setHeader('Content-Disposition', 'attachment; filename="work-packages.csv"')
+      return res.status(200).send(csv)
+    }
+
     return res.status(200).json(workPackages)
   } catch (error) {
     console.error('Error fetching work packages:', error)
@@ -175,6 +221,43 @@ async function createWorkPackage(req: NextApiRequest, res: NextApiResponse) {
         action: 'created',
         details: { subject: data.subject },
       },
+    })
+
+    // Emit unified activity
+    await emitActivity({
+      projectId: workPackage.projectId,
+      userId: data.authorId,
+      subjectType: 'work_package',
+      subjectId: workPackage.id,
+      action: 'created',
+      reference: {
+        type: 'work_package',
+        id: workPackage.id,
+        subject: data.subject,
+        projectName: workPackage.project.name,
+      },
+    })
+
+    // Dispatch webhooks (fire-and-forget, don't await to not slow down response)
+    import('@/lib/webhooks/integrate').then(({ dispatchWorkPackageCreated }) => {
+      dispatchWorkPackageCreated({
+        id: workPackage.id,
+        projectId: workPackage.projectId,
+        subject: workPackage.subject,
+        statusId: workPackage.statusId,
+        typeId: workPackage.typeId,
+        priorityId: workPackage.priorityId,
+        assigneeId: workPackage.assigneeId,
+        authorId: workPackage.authorId,
+        startDate: workPackage.startDate,
+        dueDate: workPackage.dueDate,
+        estimatedHours: workPackage.estimatedHours,
+        position: workPackage.position,
+        parentId: workPackage.parentId,
+        description: workPackage.description ?? undefined,
+        storyPoints: workPackage.storyPoints ?? undefined,
+        sprintId: workPackage.sprintId ?? undefined,
+      }).catch(err => console.error('Webhook dispatch error:', err))
     })
 
     return res.status(201).json(workPackage)

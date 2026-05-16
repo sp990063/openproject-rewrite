@@ -1,4 +1,6 @@
-import React, { useState, useCallback } from 'react'
+export const dynamic = 'force-dynamic'
+
+import React, { useState, useCallback, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
@@ -11,10 +13,11 @@ import { WorkPackageBoard } from '@/components/work-packages/board'
 import { WorkPackageCalendar } from '@/components/work-packages/calendar'
 import { QuerySwitcher } from '@/components/work-packages/query/QuerySwitcher'
 import { SaveQueryDialog } from '@/components/work-packages/query/SaveQueryDialog'
+import { ExportDialog } from '@/components/exports/ExportDialog'
 import type { WorkPackageFilter, Query, SortBy } from '@/types'
 import type { SortState } from '@/components/work-packages/table/types'
-
-export const dynamic = 'force-dynamic'
+import type { ExportFormat } from '@/lib/exporters/pdf'
+import { elementToPDF } from '@/lib/exporters/pdf'
 
 type ViewMode = 'table' | 'gantt' | 'board' | 'calendar'
 
@@ -36,6 +39,16 @@ export default function WorkPackagesPage() {
     return 'table'
   })
 
+  // ── Sync URL → viewMode (handles browser back/forward & initial SSR hydrate) ─
+  useEffect(() => {
+    const v = router.query.view as string | undefined
+    if (VIEW_MODES.some((m) => m.value === v)) {
+      setViewMode(v as ViewMode)
+    } else {
+      setViewMode('table')
+    }
+  }, [router.query.view])
+
   // ── Query (saved filter) state ───────────────────────────────────────────────
   const [currentQuery, setCurrentQuery] = useState<Query | null>(null)
   const [filters, setFilters] = useState<Partial<WorkPackageFilter>>(() => ({
@@ -46,6 +59,10 @@ export default function WorkPackagesPage() {
   const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false)
   const [editingQuery, setEditingQuery] = useState<Query | null>(null)
   const [isSavingQuery, setIsSavingQuery] = useState(false)
+
+  // ── Export modal ────────────────────────────────────────────────────────────
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
 
   // ── Create Work Package modal ─────────────────────────────────────────────────
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
@@ -105,6 +122,58 @@ export default function WorkPackagesPage() {
     }
   }
 
+  // ── Export Work Packages ─────────────────────────────────────────────────────
+  const handleExport = useCallback(async (format: ExportFormat) => {
+    if (!projectId) return
+
+    setIsExporting(true)
+    try {
+      if (format === 'csv') {
+        // Redirect to CSV endpoint
+        window.location.href = `/api/work-packages?projectId=${projectId}&format=csv`
+      } else if (format === 'pdf') {
+        // Find the table element and convert to PDF
+        const tableEl = document.querySelector('[data-work-packages-table]') as HTMLElement
+        if (tableEl) {
+          await elementToPDF(tableEl, {
+            filename: `work-packages-${projectId}`,
+            title: 'Work Packages Export',
+            scale: 2,
+          })
+        } else {
+          // Fallback: fetch data and generate simple PDF
+          const response = await fetch(`/api/work-packages?projectId=${projectId}`)
+          const data = await response.json()
+          if (Array.isArray(data)) {
+            const { generateDataPDF } = await import('@/lib/exporters/pdf')
+            generateDataPDF(
+              data.map((wp: { id: string; subject: string; status: { name: string }; type: { name: string }; dueDate: string | null }) => ({
+                id: wp.id,
+                subject: wp.subject,
+                status: wp.status?.name ?? '',
+                type: wp.type?.name ?? '',
+                dueDate: wp.dueDate ?? '',
+              })),
+              [
+                { key: 'id', header: 'ID' },
+                { key: 'subject', header: 'Subject' },
+                { key: 'status', header: 'Status' },
+                { key: 'type', header: 'Type' },
+                { key: 'dueDate', header: 'Due Date' },
+              ],
+              { filename: `work-packages-${projectId}`, title: 'Work Packages Export' }
+            )
+          }
+        }
+      }
+      // XLSX would require additional xlsx package
+    } catch (error) {
+      console.error('Failed to export:', error)
+    } finally {
+      setIsExporting(false)
+    }
+  }, [projectId])
+
   const resolvedFilters: WorkPackageFilter = {
     ...filters as WorkPackageFilter,
     projectId: projectId as string | undefined,
@@ -127,9 +196,14 @@ export default function WorkPackagesPage() {
               </Link>
               <h1 className="text-2xl font-bold text-gray-900">Work Packages</h1>
             </div>
-            <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
-              New Work Package
-            </Button>
+            <div className="flex items-center gap-3">
+              <Button variant="secondary" onClick={() => setIsExportDialogOpen(true)}>
+                Export
+              </Button>
+              <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
+                New Work Package
+              </Button>
+            </div>
           </div>
 
           {/* Toolbar: Query Switcher + View Switcher */}
@@ -247,6 +321,16 @@ export default function WorkPackagesPage() {
           setIsSaveDialogOpen(false)
           setEditingQuery(null)
         }}
+      />
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={isExportDialogOpen}
+        onOpenChange={setIsExportDialogOpen}
+        onExport={handleExport}
+        title="Export Work Packages"
+        description="Choose a format to export your work packages."
+        isLoading={isExporting}
       />
     </AuthenticatedLayout>
   )

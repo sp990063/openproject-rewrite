@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import React, { useState, useCallback } from 'react'
 import { useRouter } from 'next/router'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
@@ -7,9 +9,8 @@ import type { SearchResultType } from '@/types'
 import { useProjects } from '@/hooks/use-projects'
 import Link from 'next/link'
 
-export const dynamic = 'force-dynamic'
-
-const typeOptions: { value: SearchResultType; label: string }[] = [
+const typeOptions: { value: SearchResultType | 'all'; label: string }[] = [
+  { value: 'all', label: 'All' },
   { value: 'wiki', label: 'Wiki Pages' },
   { value: 'forum', label: 'Forums' },
   { value: 'document', label: 'Documents' },
@@ -25,6 +26,7 @@ export default function ProjectSearchPage() {
   const [query, setQuery] = useState('')
   const [selectedTypes, setSelectedTypes] = useState<SearchResultType[]>([])
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [showAll, setShowAll] = useState(true)
 
   const project = projects.data?.find((p) => p.id === projectId)
 
@@ -42,13 +44,20 @@ export default function ProjectSearchPage() {
     setDebouncedQuery(value)
   }, [])
 
-  const handleTypeToggle = useCallback((type: SearchResultType) => {
-    setSelectedTypes((prev) =>
-      prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
-    )
+  const handleTypeToggle = useCallback((type: SearchResultType | 'all') => {
+    if (type === 'all') {
+      setShowAll(true)
+      setSelectedTypes([])
+    } else {
+      setShowAll(false)
+      setSelectedTypes((prev) =>
+        prev.includes(type) ? prev.filter((t) => t !== type) : [...prev, type]
+      )
+    }
   }, [])
 
   const handleClearFilters = useCallback(() => {
+    setShowAll(true)
     setSelectedTypes([])
   }, [])
 
@@ -112,7 +121,7 @@ export default function ProjectSearchPage() {
                 key={value}
                 onClick={() => handleTypeToggle(value)}
                 className={`px-3 py-1 text-sm rounded-full transition-colors ${
-                  selectedTypes.includes(value)
+                  (value === 'all' && showAll) || (value !== 'all' && selectedTypes.includes(value as SearchResultType))
                     ? 'bg-blue-100 text-blue-700 border border-blue-300'
                     : 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'
                 }`}
@@ -132,6 +141,11 @@ export default function ProjectSearchPage() {
         </div>
 
         <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+          {debouncedQuery && searchResults && (
+            <p className="text-sm text-gray-500 mb-4">
+              Found {searchResults.total} result{searchResults.total !== 1 ? 's' : ''} for "{debouncedQuery}"
+            </p>
+          )}
           <SearchResults
             results={searchResults}
             isLoading={isLoading}

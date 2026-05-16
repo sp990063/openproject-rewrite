@@ -1,0 +1,11 @@
+[build]
+  builder = "nixpacks"
+  buildCommand = "npm run build"
+
+[deploy]
+  region = "hk"
+  numInstances = 2
+  healthcheckPath = "/api/health"
+
+[env]
+  NODE_ENV = "production"

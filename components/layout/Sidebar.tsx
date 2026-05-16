@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { cn } from '@/lib/utils'
@@ -13,6 +13,12 @@ interface NavItem {
 interface SidebarProps {
   /** When inside a project, pass projectId to show project-specific nav */
   projectId?: string
+}
+
+interface RecentProject {
+  id: string
+  name: string
+  lastVisited: string
 }
 
 // ── Icons (inline SVG to avoid icon library dependency) ─────────────────────
@@ -82,6 +88,30 @@ function SearchIcon({ className }: { className?: string }) {
   )
 }
 
+function ActivityIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+    </svg>
+  )
+}
+
+function NewsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+    </svg>
+  )
+}
+
+function DocumentsIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+    </svg>
+  )
+}
+
 function ChevronRightIcon() {
   return (
     <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -90,9 +120,36 @@ function ChevronRightIcon() {
   )
 }
 
+function ClockIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+    </svg>
+  )
+}
+
+const RECENT_PROJECTS_KEY = 'recentProjects'
+const MAX_RECENT_PROJECTS = 5
+
+function getRecentProjects(): RecentProject[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const stored = localStorage.getItem(RECENT_PROJECTS_KEY)
+    if (!stored) return []
+    return JSON.parse(stored)
+  } catch {
+    return []
+  }
+}
+
 export function Sidebar({ projectId }: SidebarProps) {
   const pathname = usePathname()
   const { sidebarCollapsed, toggleSidebar } = useUIStore()
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>([])
+
+  useEffect(() => {
+    setRecentProjects(getRecentProjects())
+  }, [])
 
   const mainNavItems: NavItem[] = [
     { label: 'Dashboard', href: '/dashboard', icon: <DashboardIcon className="w-5 h-5" /> },
@@ -103,8 +160,11 @@ export function Sidebar({ projectId }: SidebarProps) {
   const projectNavItems: NavItem[] = projectId
     ? [
         { label: 'Work Packages', href: `/projects/${projectId}/work-packages`, icon: <WorkPackagesIcon className="w-5 h-5" /> },
+        { label: 'Activity', href: `/projects/${projectId}/activity`, icon: <ActivityIcon className="w-5 h-5" /> },
         { label: 'Wiki', href: `/projects/${projectId}/wiki`, icon: <WikiIcon className="w-5 h-5" /> },
+        { label: 'News', href: `/projects/${projectId}/news`, icon: <NewsIcon className="w-5 h-5" /> },
         { label: 'Forums', href: `/projects/${projectId}/forums`, icon: <ForumsIcon className="w-5 h-5" /> },
+        { label: 'Documents', href: `/projects/${projectId}/documents`, icon: <DocumentsIcon className="w-5 h-5" /> },
         { label: 'Search', href: `/projects/${projectId}/search`, icon: <SearchIcon className="w-5 h-5" /> },
         { label: 'Settings', href: `/projects/${projectId}/settings`, icon: <SettingsIcon className="w-5 h-5" /> },
       ]
@@ -140,6 +200,36 @@ export function Sidebar({ projectId }: SidebarProps) {
         </button>
 
         <nav className="flex-1 overflow-y-auto py-2">
+          {/* Recent Projects */}
+          {recentProjects.length > 0 && !projectId && (
+            <div className="px-2 mb-2">
+              {!sidebarCollapsed && (
+                <p className="px-3 py-2 text-xs font-semibold text-gray-400 uppercase tracking-wider">Recent</p>
+              )}
+              <ul className="space-y-0.5">
+                {recentProjects.slice(0, MAX_RECENT_PROJECTS).map((project) => (
+                  <li key={project.id}>
+                    <Link
+                      href={`/projects/${project.id}`}
+                      className={cn(
+                        'flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-colors',
+                        isActive(`/projects/${project.id}`)
+                          ? 'bg-blue-50 text-blue-600'
+                          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                      )}
+                      title={sidebarCollapsed ? project.name : undefined}
+                    >
+                      <ClockIcon className="w-5 h-5 flex-shrink-0" />
+                      {!sidebarCollapsed && (
+                        <span className="truncate">{project.name}</span>
+                      )}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* Main navigation */}
           <div className="px-2">
             {!sidebarCollapsed && (

@@ -1,3 +1,4 @@
+export const dynamic = 'force-dynamic'
 // pages/projects/[projectId]/backlogs/index.tsx
 import Head from 'next/head'
 import { useState } from 'react'
@@ -22,7 +23,7 @@ interface BacklogsPageProps {
 }
 
 export default function BacklogsPage({ params }: BacklogsPageProps) {
-  const { projectId } = params
+  const projectId = params?.projectId || ''
   const { data, isLoading } = useSprints(projectId)
   const createSprint = useCreateSprint()
   const [showCreate, setShowCreate] = useState(false)

@@ -80,3 +80,62 @@ export async function searchGroups(
 export function unbindClient(client: Client): void {
   client.unbind(() => {})
 }
+
+// Test LDAP connection
+export async function testConnection(config: LdapConfig): Promise<{ success: boolean; error?: string }> {
+  const client = createLdapClient(config)
+  try {
+    if (config.bindDn && config.bindPassword) {
+      await bindClient(client, config.bindDn, config.bindPassword)
+    }
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err.message ?? 'Connection failed' }
+  } finally {
+    unbindClient(client)
+  }
+}
+
+// Authenticate user against LDAP
+export async function authenticateUser(
+  config: LdapConfig,
+  username: string,
+  password: string
+): Promise<{ success: boolean; user?: LdapUser; error?: string }> {
+  const client = createLdapClient(config)
+  try {
+    if (config.bindDn && config.bindPassword) {
+      await bindClient(client, config.bindDn, config.bindPassword)
+    }
+
+    // Search for the user
+    const filter = config.userFilter?.replace('${username}', username) ?? `(uid=${username})`
+    const attributes = ['uid', 'mail', 'cn', 'memberOf', 'displayName']
+    const users = await searchUsers(client, config.baseDn, filter, attributes)
+
+    if (users.length === 0) {
+      return { success: false, error: 'User not found' }
+    }
+
+    const ldapUser = users[0]
+
+    // Attempt to bind as the user to verify password
+    if (ldapUser.dn && password) {
+      const userClient = createLdapClient(config)
+      try {
+        await bindClient(userClient, ldapUser.dn, password)
+        return { success: true, user: ldapUser }
+      } catch {
+        return { success: false, error: 'Invalid credentials' }
+      } finally {
+        unbindClient(userClient)
+      }
+    }
+
+    return { success: true, user: ldapUser }
+  } catch (err: any) {
+    return { success: false, error: err.message ?? 'Authentication failed' }
+  } finally {
+    unbindClient(client)
+  }
+}

@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { emitActivity, makeSubjectId } from '@/lib/activity'
 
 const updateWorkPackageSchema = z.object({
   subject: z.string().min(1).max(255).optional(),
@@ -68,13 +69,6 @@ async function getWorkPackage(req: NextApiRequest, res: NextApiResponse, id: str
         author: { select: { id: true, name: true, email: true, avatarUrl: true } },
         parent: true,
         children: true,
-        activities: {
-          include: {
-            workPackage: false,
-          },
-          orderBy: { createdAt: 'desc' },
-          take: 50,
-        },
       },
     })
 
@@ -142,6 +136,22 @@ async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
           details: JSON.parse(JSON.stringify(changes)),
         },
       })
+
+      // Emit unified activity
+      await emitActivity({
+        projectId: workPackage.projectId,
+        userId: workPackage.authorId,
+        subjectType: 'work_package',
+        subjectId: workPackage.id,
+        action: 'updated',
+        details: changes,
+        reference: {
+          type: 'work_package',
+          id: workPackage.id,
+          subject: workPackage.subject,
+          projectName: workPackage.project.name,
+        },
+      })
     }
 
     return res.status(200).json(workPackage)
@@ -156,8 +166,33 @@ async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
 
 async function deleteWorkPackage(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
+    // Get work package for activity reference before deletion
+    const workPackage = await prisma.workPackage.findUnique({
+      where: { id },
+      select: { projectId: true, subject: true, authorId: true, project: { select: { name: true } } },
+    })
+
+    if (!workPackage) {
+      return res.status(404).json({ error: 'Work package not found' })
+    }
+
     await prisma.workPackage.delete({
       where: { id },
+    })
+
+    // Emit unified activity
+    await emitActivity({
+      projectId: workPackage.projectId,
+      userId: workPackage.authorId,
+      subjectType: 'work_package',
+      subjectId: id,
+      action: 'deleted',
+      reference: {
+        type: 'work_package',
+        id,
+        subject: workPackage.subject,
+        projectName: workPackage.project.name,
+      },
     })
 
     return res.status(204).end()

@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { emitActivity } from '@/lib/activity'
 
 const createRelationSchema = z.object({
   fromId: z.string().cuid(),
@@ -31,8 +32,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return getRelations(req, res, id)
     case 'POST':
       return createRelation(req, res, id)
+    case 'DELETE':
+      return deleteRelation(req, res, id)
     default:
-      res.setHeader('Allow', ['GET', 'POST'])
+      res.setHeader('Allow', ['GET', 'POST', 'DELETE'])
       return res.status(405).json({ error: `Method ${req.method} not allowed` })
   }
 }
@@ -76,6 +79,29 @@ async function createRelation(req: NextApiRequest, res: NextApiResponse, id: str
       },
     })
 
+    // Emit unified activity for both work packages involved in the relation
+    // Get projectId from the 'from' work package
+    const fromWp = await prisma.workPackage.findUnique({
+      where: { id: body.fromId },
+      select: { projectId: true, authorId: true },
+    })
+
+    if (fromWp) {
+      await emitActivity({
+        projectId: fromWp.projectId,
+        userId: fromWp.authorId,
+        subjectType: 'relation',
+        subjectId: relation.id,
+        action: 'created',
+        details: { relationType: body.relationType, fromId: body.fromId, toId: body.toId },
+        reference: {
+          type: 'work_package',
+          id: body.fromId,
+          subject: relation.from.subject,
+        },
+      })
+    }
+
     return res.status(201).json(relation)
   } catch (error) {
     if (error instanceof z.ZodError) {
@@ -83,5 +109,52 @@ async function createRelation(req: NextApiRequest, res: NextApiResponse, id: str
     }
     console.error('Error creating relation:', error)
     return res.status(500).json({ error: 'Failed to create relation' })
+  }
+}
+
+async function deleteRelation(req: NextApiRequest, res: NextApiResponse, id: string) {
+  try {
+    const { relationId } = req.query
+
+    if (!relationId || typeof relationId !== 'string') {
+      return res.status(400).json({ error: 'Relation ID is required' })
+    }
+
+    // Get relation for activity reference before deletion
+    const relation = await prisma.workPackageRelation.findUnique({
+      where: { id: relationId },
+      include: {
+        from: { select: { id: true, subject: true, projectId: true, authorId: true } },
+        to: { select: { id: true, subject: true } },
+      },
+    })
+
+    if (!relation) {
+      return res.status(404).json({ error: 'Relation not found' })
+    }
+
+    await prisma.workPackageRelation.delete({
+      where: { id: relationId },
+    })
+
+    // Emit unified activity
+    await emitActivity({
+      projectId: relation.from.projectId,
+      userId: relation.from.authorId,
+      subjectType: 'relation',
+      subjectId: relationId,
+      action: 'deleted',
+      details: { relationType: relation.relationType, fromId: relation.fromId, toId: relation.toId },
+      reference: {
+        type: 'work_package',
+        id: relation.fromId,
+        subject: relation.from.subject,
+      },
+    })
+
+    return res.status(204).end()
+  } catch (error) {
+    console.error('Error deleting relation:', error)
+    return res.status(500).json({ error: 'Failed to delete relation' })
   }
 }

@@ -1,83 +1,72 @@
-// pages/api/sse/index.ts
-import { NextApiRequest, NextApiResponse } from 'next';
-import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/lib/auth';
+import type { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { Redis } from '@upstash/redis'
 
 export const config = {
   api: {
     bodyParser: false,
   },
-};
+}
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // @ts-ignore - next-auth types are complex
-  const session = await getServerSession(authOptions);
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
+  const session = await getServerSession(req, res, authOptions)
   if (!session) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'UNAUTHORIZED' })
   }
 
-  const userId = session.user.id;
-
-  // Set SSE headers
-  res.setHeader('Content-Type', 'text/event-stream');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.setHeader('Connection', 'keep-alive');
-  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
-
-  // Check for Redis
-  const redisUrl = process.env.UPSTASH_REDIS_REST_URL ?? process.env.REDIS_URL;
-  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN ?? process.env.REDIS_TOKEN;
-
-  if (!redisUrl || !redisToken) {
-    // SSE without Redis — send a single connected event then close
-    res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
-    res.end();
-    return;
+  const userId = (session.user as any).id || (session.user as any).sub
+  if (!userId) {
+    return res.status(401).json({ error: 'UNAUTHORIZED' })
   }
 
-  let subscriber: any = null;
-  try {
-    const Redis = require('ioredis');
-    subscriber = new Redis(redisUrl, { token: redisToken, maxRetriesPerRequest: 1 });
-    
-    const channel = `sse:${userId}`;
-    await subscriber.subscribe(channel);
+  // SSE headers
+  res.setHeader('Content-Type', 'text/event-stream')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.setHeader('Connection', 'keep-alive')
 
-    subscriber.on('message', (ch: string, message: string) => {
-      if (ch !== channel) return;
-      try {
-        res.write(`data: ${message}\n\n`);
-      } catch {
-        // Client disconnected
-      }
-    });
+  const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_URL!,
+    token: process.env.UPSTASH_REDIS_TOKEN!,
+  })
+  const channel = `sse:${userId}`
 
-    // Send initial connected event
-    res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
+  // Subscribe to user's personal Redis channel
+  const subscriber = redis.duplicate()
+  await subscriber.subscribe(channel)
 
-    // Heartbeat every 25s
-    const heartbeat = setInterval(() => {
-      try {
-        res.write(`: heartbeat\n\n`);
-      } catch {
-        clearInterval(heartbeat);
-      }
-    }, 25000);
-
-    // Cleanup on disconnect
-    req.socket.on('close', async () => {
-      clearInterval(heartbeat);
-      try {
-        await subscriber.unsubscribe(channel);
-        await subscriber.quit();
-      } catch {}
-    });
-  } catch (e) {
-    console.error('[SSE] Failed to setup SSE:', e);
-    // Send connected event even if Redis fails
+  subscriber.on('message', (ch: string, message: string) => {
+    if (ch !== channel) return
     try {
-      res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`);
-      res.end();
-    } catch {}
-  }
+      res.write(`data: ${message}\n\n`)
+    } catch {
+      // Client disconnected
+    }
+  })
+
+  // Send initial connection event
+  res.write(`data: ${JSON.stringify({ type: 'connected', timestamp: Date.now() })}\n\n`)
+
+  // Heartbeat every 25s (below nginx 30s timeout)
+  const heartbeat = setInterval(() => {
+    try {
+      res.write(`: heartbeat\n\n`)
+    } catch {
+      clearInterval(heartbeat)
+    }
+  }, 25000)
+
+  // Cleanup on disconnect
+  req.socket.on('close', async () => {
+    clearInterval(heartbeat)
+    try {
+      await subscriber.unsubscribe(channel)
+      await subscriber.quit()
+    } catch {
+      // ignore
+    }
+  })
 }

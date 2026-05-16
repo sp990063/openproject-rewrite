@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -6,8 +8,7 @@ import { Button, Modal, Input } from '@/components/ui'
 import { useWikiPages } from '@/hooks/useWikiPages'
 import { useCreateWikiPage } from '@/hooks/useWikiMutations'
 import { useCurrentUser } from '@/hooks/use-current-user'
-
-export const dynamic = 'force-dynamic'
+import { formatDate } from '@/lib/utils'
 
 export default function WikiPagesIndexPage() {
   const router = useRouter()
@@ -140,7 +141,7 @@ export default function WikiPagesIndexPage() {
                       {page._count?.children ?? 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(page.updatedAt).toLocaleDateString()}
+                      {formatDate(page.updatedAt)}
                     </td>
                   </tr>
                 ))}

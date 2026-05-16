@@ -1,11 +1,11 @@
+export const dynamic = 'force-dynamic'
+
 import React from 'react'
 import { useRouter } from 'next/router'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
 import { useProjects } from '@/hooks/use-projects'
 import { Badge } from '@/components/ui'
 import Link from 'next/link'
-
-export const dynamic = 'force-dynamic'
 
 export default function ProjectOverviewPage() {
   const router = useRouter()

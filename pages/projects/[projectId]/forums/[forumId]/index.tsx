@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -6,8 +8,7 @@ import { Button, Modal, Input } from '@/components/ui'
 import { useForum } from '@/hooks/useForum'
 import { useCreateThread } from '@/hooks/useForumMutations'
 import { useCurrentUser } from '@/hooks/use-current-user'
-
-export const dynamic = 'force-dynamic'
+import { formatDate } from '@/lib/utils'
 
 export default function ForumDetailPage() {
   const router = useRouter()
@@ -82,7 +83,7 @@ export default function ForumDetailPage() {
                     <p className="text-gray-500 text-sm mt-1">{forum.description}</p>
                   )}
                   <p className="text-gray-400 text-xs mt-2">
-                    Created by {forum.author?.name ?? 'Unknown'} on {new Date(forum.createdAt).toLocaleDateString()}
+                    Created by {forum.author?.name ?? 'Unknown'} on {formatDate(forum.createdAt)}
                   </p>
                 </div>
                 <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
@@ -154,7 +155,7 @@ export default function ForumDetailPage() {
                           {thread._count?.posts ?? 0}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {new Date(thread.createdAt).toLocaleDateString()}
+                          {formatDate(thread.createdAt)}
                         </td>
                       </tr>
                     ))}

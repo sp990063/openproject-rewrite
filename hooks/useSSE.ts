@@ -1,68 +1,61 @@
-// hooks/useSSE.ts
-import { useEffect, useRef, useCallback } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import type { SSEEvent } from '@/lib/realtime';
+import { useEffect, useRef, useCallback } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 
-export function useSSE(userId: string | null | undefined) {
-  const queryClient = useQueryClient();
-  const eventSourceRef = useRef<EventSource | null>(null);
-  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+interface SSEEvent {
+  type: string
+  payload: unknown
+  timestamp: number
+}
+
+export function useSSE(userId: string | undefined) {
+  const queryClient = useQueryClient()
+  const eventSourceRef = useRef<EventSource | null>(null)
 
   const handleEvent = useCallback((event: SSEEvent) => {
     switch (event.type) {
       case 'connected':
-        console.log('[SSE] Connected');
-        break;
+        console.log('[SSE] Connected')
+        break
       case 'work_package.updated':
       case 'work_package.created':
-        queryClient.invalidateQueries({ queryKey: ['work-packages'] });
-        break;
+        queryClient.invalidateQueries({ queryKey: ['work-packages'] })
+        break
       case 'notification.new':
-        queryClient.invalidateQueries({ queryKey: ['notifications'] });
-        queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
-        break;
-      case 'member.added':
-        queryClient.invalidateQueries({ queryKey: ['members'] });
-        break;
+        queryClient.invalidateQueries({ queryKey: ['notifications'] })
+        queryClient.invalidateQueries({ queryKey: ['unread-count'] })
+        break
       default:
-        console.log('[SSE] Unknown event:', event.type);
+        console.log('[SSE] Unknown event:', event.type)
     }
-  }, [queryClient]);
+  }, [queryClient])
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId) return
 
-    function connect() {
-      const eventSource = new EventSource(`/api/sse?userId=${userId}`);
-      eventSourceRef.current = eventSource;
+    const eventSource = new EventSource(`/api/sse?userId=${userId}`)
+    eventSourceRef.current = eventSource
 
-      eventSource.onmessage = (e) => {
-        try {
-          const data = JSON.parse(e.data) as SSEEvent;
-          handleEvent(data);
-        } catch (error) {
-          console.error('[SSE] Failed to parse event:', error);
-        }
-      };
-
-      eventSource.onerror = () => {
-        console.error('[SSE] Connection error, reconnecting in 5s...');
-        eventSource.close();
-        reconnectTimeoutRef.current = setTimeout(() => {
-          if (eventSourceRef.current === eventSource) {
-            connect();
-          }
-        }, 5000);
-      };
+    eventSource.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data) as SSEEvent
+        handleEvent(data)
+      } catch (error) {
+        console.error('[SSE] Parse error:', error)
+      }
     }
 
-    connect();
+    eventSource.onerror = () => {
+      console.error('[SSE] Connection error, reconnecting in 5s...')
+      eventSource.close()
+      setTimeout(() => {
+        if (eventSourceRef.current === eventSource) {
+          eventSourceRef.current = new EventSource(`/api/sse?userId=${userId}`)
+        }
+      }, 5000)
+    }
 
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      eventSourceRef.current?.close();
-    };
-  }, [userId, handleEvent]);
+      eventSource.close()
+    }
+  }, [userId, handleEvent])
 }

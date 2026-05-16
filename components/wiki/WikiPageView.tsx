@@ -1,7 +1,8 @@
-import React, { useMemo, useState } from 'react'
+import React, { useMemo, useState, useEffect } from 'react'
 import Link from 'next/link'
 import { formatDistanceToNow, format } from 'date-fns'
 import type { WikiPageWithMeta, WikiPageVersion } from '@/types/wiki'
+import { renderMarkdown } from '@/lib/markdown'
 
 interface WikiPageViewProps {
   page: WikiPageWithMeta
@@ -12,8 +13,31 @@ interface WikiPageViewProps {
 
 export function WikiPageView({ page, versions, onEdit, onShowHistory }: WikiPageViewProps) {
   const [showToc, setShowToc] = useState(true)
+  const [renderedContent, setRenderedContent] = useState('')
 
   const toc = useMemo(() => extractTableOfContents(page.content), [page.content])
+
+  // Ctrl+F / Cmd+F support for in-page search using window.find()
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+        event.preventDefault()
+        if (typeof window !== 'undefined') {
+          window.find()
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    renderMarkdown(page.content).then((html) => {
+      if (!cancelled) setRenderedContent(html)
+    })
+    return () => { cancelled = true }
+  }, [page.content])
 
   return (
     <div className="wiki-page-view">
@@ -90,9 +114,14 @@ export function WikiPageView({ page, versions, onEdit, onShowHistory }: WikiPage
       {/* Content area with optional TOC */}
       <div className="flex gap-8">
         <article className="flex-1 min-w-0">
-          {/* Rendered content would go here - for now showing raw markdown */}
+          {/* Rendered content — sanitized via renderMarkdown (XSS-safe) */}
           <div className="prose prose-slate max-w-none">
-            <pre className="whitespace-pre-wrap text-sm text-gray-700">{page.content}</pre>
+            {renderedContent ? (
+              <div dangerouslySetInnerHTML={{ __html: renderedContent }} />
+            ) : (
+              /* Show raw content while rendering to avoid layout flash */
+              <pre className="whitespace-pre-wrap text-sm text-gray-700">{page.content}</pre>
+            )}
           </div>
         </article>
 

@@ -1,11 +1,9 @@
-// sentry.client.config.ts
-import * as Sentry from '@sentry/nextjs';
+import * as Sentry from '@sentry/nextjs'
 
 Sentry.init({
-  dsn: process.env.SENTRY_DSN ?? '',
-  environment: process.env.NODE_ENV ?? 'development',
-  tracesSampleRate: 0.1,
-  enabled: process.env.NODE_ENV !== 'development',
-});
-
-export default Sentry;
+  dsn: process.env.SENTRY_DSN,
+  environment: process.env.NODE_ENV,
+  enabled: process.env.NODE_ENV === 'production',
+  tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 0,
+  rethrowAfterCapture: false,
+})

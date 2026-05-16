@@ -15,6 +15,15 @@ export function generateBackupCodes(): string[] {
   return codes
 }
 
+// Create hashed backup codes with plain codes for one-time display
+export async function createBackupCodeHashes(codes: string[]): Promise<Map<string, string>> {
+  const hashedCodes = new Map<string, string>()
+  for (const code of codes) {
+    hashedCodes.set(hashBackupCode(code), code)
+  }
+  return hashedCodes
+}
+
 export function hashBackupCode(code: string): string {
   return crypto.createHash('sha256').update(code.toUpperCase().replace(/[^A-Z0-9]/g, '')).digest('hex')
 }

@@ -1,29 +1,13 @@
 {
-  "framework": "nextjs",
+  "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "npm run build",
-  "installCommand": "npm install",
-  "devCommand": "npm run dev",
+  "outputDirectory": ".next",
+  "framework": "nextjs",
   "regions": ["hkg1"],
   "env": {
-    "DATABASE_URL": "@database-url",
-    "NEXTAUTH_URL": "@nextauth-url",
-    "NEXTAUTH_SECRET": "@nextauth-secret"
+    "NODE_ENV": "production"
   },
-  "headers": [
-    {
-      "source": "/api/sse",
-      "headers": [
-        { "key": "Content-Type", "value": "text/event-stream" },
-        { "key": "Cache-Control", "value": "no-cache" },
-        { "key": "Connection", "value": "keep-alive" },
-        { "key": "X-Accel-Buffering", "value": "no" }
-      ]
-    },
-    {
-      "source": "/api/health",
-      "headers": [
-        { "key": "Cache-Control", "value": "no-store" }
-      ]
-    }
-  ]
+  "regions": {
+    "default": "hkg1"
+  }
 }

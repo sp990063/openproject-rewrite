@@ -1,7 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { ratelimit } from '@/lib/ratelimit'
+import { ratelimit, checkRateLimit } from '@/lib/ratelimit'
 
 const createProjectSchema = z.object({
   name: z.string().min(1).max(255),

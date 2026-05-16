@@ -1,5 +1,5 @@
 import React from 'react'
-import { Button } from '@/components/ui'
+import { Button, TableCell } from '@/components/ui'
 import type { ProjectMember } from '@/types/project'
 
 interface MemberCardProps {
@@ -14,7 +14,7 @@ export function MemberCard({ member, onEditRole, onRemove, isRemoving }: MemberC
 
   return (
     <tr className="hover:bg-gray-50">
-      <td className="px-6 py-4 whitespace-nowrap">
+      <TableCell className="px-6 py-4 whitespace-nowrap">
         <div className="flex items-center">
           <div className="h-8 w-8 rounded-full bg-gray-200 flex items-center justify-center text-sm font-medium text-gray-600">
             {initials}
@@ -25,16 +25,16 @@ export function MemberCard({ member, onEditRole, onRemove, isRemoving }: MemberC
             </p>
           </div>
         </div>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
+      </TableCell>
+      <TableCell className="px-6 py-4 whitespace-nowrap">
         <p className="text-sm text-gray-500">{member.user?.email || '-'}</p>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap">
+      </TableCell>
+      <TableCell className="px-6 py-4 whitespace-nowrap">
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
           {member.role?.name || 'Unknown'}
         </span>
-      </td>
-      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+      </TableCell>
+      <TableCell className="px-6 py-4 whitespace-nowrap text-right text-sm">
         <Button
           variant="ghost"
           size="sm"
@@ -51,7 +51,7 @@ export function MemberCard({ member, onEditRole, onRemove, isRemoving }: MemberC
         >
           {isRemoving ? 'Removing...' : 'Remove'}
         </Button>
-      </td>
+      </TableCell>
     </tr>
   )
 }

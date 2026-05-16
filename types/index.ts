@@ -17,6 +17,7 @@ export interface Project {
   status: 'active' | 'archived' | 'on_hold'
   createdAt: Date
   updatedAt: Date
+  generatedFrom?: string | null
   members?: Member[]
   workPackages?: WorkPackage[]
   versions?: Version[]
@@ -153,6 +154,17 @@ export interface ProjectModule {
   projectId: string
   module: string
   enabled: boolean
+}
+
+// ─── Project Templates ────────────────────────────────────────────────────────
+
+export interface ProjectTemplate {
+  id: string
+  name: string
+  description: string | null
+  modules: string[]
+  createdAt: Date
+  updatedAt: Date
 }
 
 // ─── Phase 2: Extended Types ────────────────────────────────────────────────

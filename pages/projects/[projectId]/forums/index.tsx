@@ -1,3 +1,5 @@
+export const dynamic = 'force-dynamic'
+
 import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
@@ -6,8 +8,7 @@ import { Button, Modal, Input } from '@/components/ui'
 import { useForums } from '@/hooks/useForums'
 import { useCreateForum } from '@/hooks/useForumMutations'
 import { useCurrentUser } from '@/hooks/use-current-user'
-
-export const dynamic = 'force-dynamic'
+import { formatDate } from '@/lib/utils'
 
 export default function ForumsIndexPage() {
   const router = useRouter()
@@ -140,7 +141,7 @@ export default function ForumsIndexPage() {
                       {forum._count?.threads ?? 0}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                      {new Date(forum.createdAt).toLocaleDateString()}
+                      {formatDate(forum.createdAt)}
                     </td>
                   </tr>
                 ))}

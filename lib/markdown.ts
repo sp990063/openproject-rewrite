@@ -11,6 +11,7 @@ import remarkRehype from 'remark-rehype';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import rehypeStringify from 'rehype-stringify';
 import DOMPurify from 'isomorphic-dompurify';
+import { processMacros } from '@/lib/wiki/macros';
 
 const ALLOWED_TAGS = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
@@ -23,19 +24,22 @@ const ALLOWED_TAGS = [
   'div', 'span',
 ];
 
-const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'className', 'target', 'rel'];
+const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'className', 'target', 'rel', 'data-page'];
 
 /**
  * Render Markdown string to sanitized HTML.
  * Safe to use with user-provided content.
  */
 export async function renderMarkdown(content: string): Promise<string> {
+  // Step 0: Process wiki macros first
+  const contentWithMacros = processMacros(content);
+
   // Step 1: Markdown → HTML with GFM support
   const vfile = await unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype)
-    .process(content);
+    .process(contentWithMacros);
 
   // Step 2: Sanitize HTML — prevents XSS attacks
   const cleanHtml = DOMPurify.sanitize(String(vfile), {

@@ -213,3 +213,62 @@ export function useUnlockThread() {
     },
   })
 }
+
+// ─── Pin/Unpin helpers ───────────────────────────────────────────────────────
+
+export function usePinThread() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (threadId: string) => {
+      const res = await fetch(
+        `/api/projects/undefined/forums/undefined/threads/${threadId}/pin`,
+        { method: 'POST' }
+      )
+      if (!res.ok) throw new Error('Failed to pin thread')
+      return res.json()
+    },
+    onSuccess: (_data, id) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(id) })
+    },
+  })
+}
+
+export function useUnpinThread() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async (threadId: string) => {
+      const res = await fetch(
+        `/api/projects/undefined/forums/undefined/threads/${threadId}/pin`,
+        { method: 'POST' }
+      )
+      if (!res.ok) throw new Error('Failed to unpin thread')
+      return res.json()
+    },
+    onSuccess: (_data, id) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(id) })
+    },
+  })
+}
+
+// ─── Vote helper ─────────────────────────────────────────────────────────────
+
+export function useVotePost() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: async ({ postId, threadId }: { postId: string; threadId: string }) => {
+      const res = await fetch(
+        `/api/projects/undefined/forums/undefined/posts/${postId}/vote`,
+        { method: 'POST' }
+      )
+      if (!res.ok) throw new Error('Failed to vote')
+      return res.json()
+    },
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumPosts(variables.threadId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.threadId) })
+    },
+  })
+}

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import { Badge } from '@/components/ui'
+import { Badge, TableCell } from '@/components/ui'
 import type { Status, Type, Priority, User } from '@/types'
 import type { ColumnId } from './types'
 
@@ -337,7 +337,7 @@ export function InlineCellDisplay({
   align?: 'left' | 'center' | 'right'
 }) {
   return (
-    <td
+    <TableCell
       className={cn(
         'px-4 py-2 text-sm text-gray-900 cursor-default',
         'hover:bg-gray-50 transition-colors',
@@ -350,7 +350,7 @@ export function InlineCellDisplay({
       title="Double-click to edit"
     >
       {children}
-    </td>
+    </TableCell>
   )
 }
 

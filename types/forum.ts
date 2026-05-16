@@ -21,6 +21,7 @@ export interface ForumThread {
   subject: string
   authorId: string
   isSticky: boolean
+  isPinned: boolean
   isLocked: boolean
   createdAt: Date
   updatedAt: Date
@@ -35,10 +36,19 @@ export interface ForumPost {
   threadId: string
   content: string
   authorId: string
+  voteScore: number
   createdAt: Date
   updatedAt: Date
   thread?: ForumThread
   author?: Pick<User, 'id' | 'name' | 'email' | 'avatarUrl'>
+  votes?: ForumVote[]
+}
+
+export interface ForumVote {
+  id: string
+  postId: string
+  userId: string
+  createdAt: Date
 }
 
 // ─── Input types ─────────────────────────────────────────────────────────────

@@ -47,6 +47,12 @@ export const queryKeys = {
   /** Single wiki page by slug */
   wikiPage: (slug: string) => ['wiki-pages', slug] as const,
 
+  /** All wiki page versions for a page */
+  wikiVersions: (projectId: string, slug: string) => ['wiki-pages', projectId, slug, 'versions'] as const,
+
+  /** Single wiki page version */
+  wikiVersion: (projectId: string, slug: string, version: number) => ['wiki-pages', projectId, slug, 'version', version] as const,
+
   /** All forums for a project */
   forums: (projectId: string) => ['forums', projectId] as const,
 
@@ -88,6 +94,30 @@ export const queryKeys = {
 
   /** Single meeting by id */
   meeting: (id: string) => ['meetings', 'detail', id] as const,
+
+  // ─── News ──────────────────────────────────────────────────────────────────
+
+  /** All news for a project (paginated) */
+  newsList: (projectId: string, page: number) => ['news', projectId, 'list', page] as const,
+
+  /** Single news item by slug */
+  newsItem: (projectId: string, slug: string) => ['news', projectId, 'detail', slug] as const,
+
+  /** Watch status for a work package */
+  workPackageWatchers: (id: string) => ['work-packages', id, 'watch'] as const,
+
+  // ─── Repositories ─────────────────────────────────────────────────────────
+
+  /** All repositories for a project */
+  repositories: (projectId: string) => ['repositories', projectId] as const,
+
+  /** Commits for a repository */
+  repositoryCommits: (projectId: string, repoId: string) =>
+    ['repositories', projectId, repoId, 'commits'] as const,
+
+  /** File tree for a repository at a given SHA */
+  repositoryTree: (projectId: string, repoId: string) =>
+    ['repositories', projectId, repoId, 'tree'] as const,
 } as const
 
 export type QueryKeys = typeof queryKeys

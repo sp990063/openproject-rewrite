@@ -28,6 +28,7 @@ model User {
 
   // Relations
   memberships         Member[]
+  groupMemberships    GroupMembership[]
   assignedWPs         WorkPackage[]     @relation("Assignee")
   authorWPs           WorkPackage[]     @relation("Author")
   timeEntries         TimeEntry[]
@@ -39,9 +40,17 @@ model User {
   forums              Forum[]
   forumThreads        ForumThread[]
   forumPosts          ForumPost[]
+  forumVotes          ForumVote[]
   // Document relations
   documents           Document[]
-  // Meeting relations
+  documentVersions    DocumentVersion[]
+  // News relations (Phase 4)
+  newsItems           News[]
+  newsComments        NewsComment[]
+  // Activity relations (Phase 4)
+  activities          Activity[]
+  activityCommentsReceived ActivityComment[] @relation("ActivityCommentAuthor")
+  // Phase 5: Notification relations
   meetings            Meeting[]
   meetingAttendees    MeetingAttendee[]
   meetingMinutes      MeetingMinutes[]
@@ -49,6 +58,9 @@ model User {
   // Phase 5: Notification relations
   notifications        Notification[]
   notificationSettings NotificationSetting[]
+
+  // Phase 5: Watched work packages
+  watchedWorkPackages WorkPackage[] @relation("WorkPackageWatchers")
 
   // Phase 6: File storage
   uploadedFiles ProjectFile[] @relation("FileUploader")
@@ -60,6 +72,9 @@ model User {
   webAuthnCreds       String? // JSON array of WebAuthn credential data
   secondFactorPending String? // JSON: temporary storage during 2FA setup flow
   webAuthnCredentials WebAuthnCredential[]
+
+  // API v3: Personal API key for OpenProject API compatibility
+  apiKey              String?
 
   @@map("users")
 }
@@ -89,12 +104,26 @@ model Project {
   documents       Document[]
   documentFolders DocumentFolder[]
   meetings        Meeting[]
+  newsItems       News[]
+  activities      Activity[]
 
   // Phase 5: Project WIP Limits
   wipLimits ProjectWipLimit[]
 
   // Phase 6: File storage
   files ProjectFile[]
+
+  // Phase 6: Git repositories
+  repositories Repository[]
+
+  // Phase 2: Budgets & Cost Tracking
+  budgets Budget[]
+
+  // Phase 5/6: Webhooks
+  webhooks Webhook[]
+
+  // Project Template reference
+  generatedFrom String?
 
   @@map("projects")
 }
@@ -182,7 +211,9 @@ model WorkPackage {
   relations   WorkPackageRelation[] @relation("RelationFrom")
   relationTo  WorkPackageRelation[] @relation("RelationTo")
   timeEntries TimeEntry[]
-  activities  Activity[]
+  watchers    User[]                @relation("WorkPackageWatchers")
+  commitLinks CommitWorkPackage[]
+  budgetLines BudgetLine[]
 
   @@index([projectId])
   @@index([statusId])
@@ -306,20 +337,84 @@ model TimeEntry {
 }
 
 // ============================================
-// ACTIVITY / AUDIT TRAIL
+// BUDGETS & COST TRACKING (Phase 2)
+// ============================================
+
+model Budget {
+  id          String      @id @default(cuid())
+  projectId   String
+  name        String
+  description String?
+  amount      Float       @default(0)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  lines       BudgetLine[]
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("budgets")
+}
+
+model BudgetLine {
+  id            String      @id @default(cuid())
+  budgetId      String
+  description   String
+  unitCost      Float       @default(0)
+  quantity      Float       @default(1)
+  totalCost     Float       @default(0) // unitCost * quantity
+  workPackageId String?
+  createdAt     DateTime    @default(now())
+  budget        Budget      @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  workPackage   WorkPackage? @relation(fields: [workPackageId], references: [id])
+
+  @@index([budgetId])
+  @@map("budget_lines")
+}
+
+// ============================================
+// UNIFIED ACTIVITY FEED (Phase 4)
+// Replaces old work-package-only Activity model
 // ============================================
 
 model Activity {
-  id            String   @id @default(cuid())
-  workPackageId String
-  userId        String
-  action        String // "created", "updated", "commented"
-  details       Json? // Changed fields
-  createdAt     DateTime @default(now())
+  id          String   @id @default(cuid())
+  projectId   String
+  userId      String
+  // Polymorphic reference
+  subjectType String   // "work_package" | "wiki_page" | "forum_post" | "forum_thread" | "document" | "meeting" | "news" | "time_entry" | "member" | "version"
+  subjectId   String   // e.g. "wp-123", "wiki-api-docs", "doc-456"
+  action      String   // "created" | "updated" | "deleted" | "commented" | "viewed"
+  details     Json?    // { field: "status", oldValue: "open", newValue: "closed" }
+  // @mentions — for auto-creating notifications
+  mentionIds  String[] @default([])
+  // Human-readable reference for display
+  reference   Json     // { type: "WorkPackage", id: "...", subject: "Fix login bug" }
+  // Archive flag (after 2 years)
+  isArchived  Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
-  workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id])
+  comments ActivityComment[]
 
+  @@index([projectId, createdAt])
+  @@index([projectId, isArchived])
+  @@index([subjectType, subjectId])
+  @@index([userId, createdAt])
   @@map("activities")
+}
+
+model ActivityComment {
+  id         String   @id @default(cuid())
+  activityId String
+  userId     String
+  content    String   @db.Text
+  createdAt  DateTime @default(now())
+
+  activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
+  author User    @relation("ActivityCommentAuthor", fields: [userId], references: [id])
+
+  @@map("activity_comments")
 }
 
 // ─────────────────────────────────────────────
@@ -366,6 +461,19 @@ model Version {
   project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@map("versions")
+}
+
+// ============================================
+// PROJECT TEMPLATES
+// ============================================
+
+model ProjectTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  modules     String[] // module names to include
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 // ============================================
@@ -450,6 +558,7 @@ model ForumThread {
   subject   String
   authorId  String
   isSticky  Boolean  @default(false)
+  isPinned  Boolean  @default(false)
   isLocked  Boolean  @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -466,13 +575,65 @@ model ForumPost {
   threadId  String
   content   String   @db.Text
   authorId  String
+  voteScore Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   thread ForumThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
   author User        @relation(fields: [authorId], references: [id])
+  votes  ForumVote[]
 
   @@map("forum_posts")
+}
+
+model ForumVote {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post ForumPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user User      @relation(fields: [userId], references: [id])
+
+  @@unique([postId, userId])
+  @@map("forum_votes")
+}
+
+// ============================================
+// NEWS (Phase 4)
+// ============================================
+
+model News {
+  id        String   @id @default(cuid())
+  projectId String
+  authorId  String
+  title     String
+  slug      String
+  summary   String?  @db.VarChar(500)
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  project  Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author   User          @relation(fields: [authorId], references: [id])
+  comments NewsComment[]
+
+  @@unique([projectId, slug])
+  @@map("news")
+}
+
+model NewsComment {
+  id        String   @id @default(cuid())
+  newsId    String
+  authorId  String
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  news   News @relation(fields: [newsId], references: [id], onDelete: Cascade)
+  author User @relation(fields: [authorId], references: [id])
+
+  @@map("news_comments")
 }
 
 // ============================================
@@ -486,14 +647,45 @@ model Document {
   description String?
   folderId    String?
   authorId    String
+  // File metadata
+  fileName    String   @default("")
+  fileSize    Int      @default(0)    // bytes
+  fileType    String   @default("")   // MIME type
+  fileUrl     String   @default("")  // storage URL (Phase 6: actual file URL)
+  // Versioning
+  version     Int      @default(1)
+  // Soft delete (M2 FIX)
+  deletedAt   DateTime?
+  deletedBy   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
   author  User            @relation(fields: [authorId], references: [id])
   folder  DocumentFolder? @relation(fields: [folderId], references: [id])
+  versions DocumentVersion[]
 
   @@map("documents")
+}
+
+// DocumentVersion — each upload creates a new version
+model DocumentVersion {
+  id          String   @id @default(cuid())
+  documentId  String
+  version     Int
+  fileName    String
+  fileSize    Int      @default(0)
+  fileType    String   @default("")
+  fileUrl     String   @default("")
+  authorId    String
+  createdAt   DateTime @default(now())
+
+  document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  author   User     @relation(fields: [authorId], references: [id])
+
+  @@unique([documentId, version])
+  @@index([documentId])
+  @@map("document_versions")
 }
 
 model DocumentFolder {
@@ -751,4 +943,173 @@ enum SprintStatus {
   OPEN
   ACTIVE
   CLOSED
+}
+
+// ============================================
+// CUSTOM FIELDS
+// ============================================
+
+model CustomField {
+  id             String   @id @default(cuid())
+  name           String
+  fieldFormat    String   // 'string' | 'int' | 'float' | 'bool' | 'date' | 'list' | 'user' | 'version'
+  possibleValues String[] @default([]) // for list type
+  defaultValue   String?
+  required       Boolean  @default(false)
+  searchable     Boolean  @default(false)
+  filterable     Boolean  @default(false)
+  editable       Boolean  @default(true)
+  visible        Boolean  @default(true)
+  entityType     String   // 'WorkPackage' | 'Project' | 'User'
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@map("custom_fields")
+}
+
+// ============================================
+// SETTINGS (Key-Value Store)
+// ============================================
+
+model Setting {
+  key   String @id
+  value String
+
+  @@map("settings")
+}
+
+// ============================================
+// REPOSITORIES (Phase 6)
+// ============================================
+
+model Repository {
+  id         String   @id @default(cuid())
+  projectId  String
+  type       String   @default("GIT") // GIT | SVN
+  name       String
+  url        String?
+  localPath  String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  commits Commit[]
+
+  @@index([projectId])
+  @@map("repositories")
+}
+
+model Commit {
+  id           String   @id @default(cuid())
+  repositoryId String
+  sha          String   @unique
+  message      String   @db.Text
+  authorName   String
+  authorEmail  String
+  committedAt  DateTime
+  createdAt    DateTime @default(now())
+
+  repository     Repository          @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workPackages  CommitWorkPackage[]
+
+  @@index([repositoryId])
+  @@index([sha])
+  @@map("commits")
+}
+
+model CommitWorkPackage {
+  commitId       String
+  workPackageId  String
+
+  commit        Commit      @relation(fields: [commitId], references: [id], onDelete: Cascade)
+  workPackage   WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+
+  @@id([commitId, workPackageId])
+  @@map("commit_work_packages")
+}
+
+// ============================================
+// WEBHOOKS (Phase 5/6)
+// ============================================
+
+model Webhook {
+  id        String   @id @default(cuid())
+  projectId String?  // null = system-wide
+  url       String
+  secret    String?  // HMAC secret
+  events    String[] // ['work_package.created', 'work_package.updated', 'project.member_added']
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deliveries WebhookDelivery[]
+  project   Project? @relation(fields: [projectId], references: [id])
+}
+
+model WebhookDelivery {
+  id          String   @id @default(cuid())
+  webhookId   String
+  event       String
+  payload     String   // JSON string
+  status      String   // 'pending' | 'success' | 'failed'
+  responseCode Int?
+  responseBody String?
+  attempts    Int      @default(0)
+  nextRetry   DateTime?
+  createdAt  DateTime @default(now())
+  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+}
+
+// ============================================
+// ANNOUNCEMENTS (System-wide banners)
+// ============================================
+
+model Announcement {
+  id         String    @id @default(cuid())
+  content    String    // markdown supported
+  type       String    @default("info") // info | warning | success | error
+  dismissible Boolean  @default(true)
+  startsAt   DateTime?
+  endsAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+}
+
+// ============================================
+// USER GROUPS
+// ============================================
+
+model Group {
+  id        String   @id @default(cuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  members   GroupMembership[]
+
+  @@map("groups")
+}
+
+model GroupMembership {
+  id        String   @id @default(cuid())
+  groupId   String
+  userId    String
+  addedAt   DateTime @default(now())
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@map("group_memberships")
+}
+
+// ============================================
+// BRANDING / WHITE-LABEL
+// ============================================
+
+model Branding {
+  id             String  @id @default("default") // singleton
+  logoUrl        String?
+  faviconUrl     String?
+  primaryColor   String  @default("#1E40AF") // brand blue
+  updatedAt      DateTime @updatedAt
+
+  @@map("branding")
 }

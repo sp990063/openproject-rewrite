@@ -1,13 +1,20 @@
-import React, { useState } from 'react'
+export const dynamic = 'force-dynamic'
+
+import React, { useState, useMemo } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
 import { Button, Modal } from '@/components/ui'
 import { useWikiPage } from '@/hooks/useWikiPage'
-import { useUpdateWikiPage, useDeleteWikiPage } from '@/hooks/useWikiMutations'
+import { useUpdateWikiPage, useDeleteWikiPage, useRestoreWikiVersion } from '@/hooks/useWikiMutations'
+import { useWikiVersions } from '@/hooks/useWikiVersions'
 import { useCurrentUser } from '@/hooks/use-current-user'
-
-export const dynamic = 'force-dynamic'
+import { formatDate } from '@/lib/utils'
+import { WikiTableOfContents, useActiveHeading } from '@/components/wiki/WikiTableOfContents'
+import { WikiVersionHistory } from '@/components/wiki/WikiVersionHistory'
+import { ExportDialog } from '@/components/exports/ExportDialog'
+import type { ExportFormat } from '@/lib/exporters/pdf'
+import { elementToPDF } from '@/lib/exporters/pdf'
 
 export default function WikiPageViewPage() {
   const router = useRouter()
@@ -22,6 +29,31 @@ export default function WikiPageViewPage() {
   const [editTitle, setEditTitle] = useState('')
   const [editContent, setEditContent] = useState('')
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false)
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false)
+  const [viewVersion, setViewVersion] = useState<{ version: number; content: string } | null>(null)
+  const [isExportDialogOpen, setIsExportDialogOpen] = useState(false)
+  const [isExporting, setIsExporting] = useState(false)
+
+  const { data: versions } = useWikiVersions(projectId as string | undefined, slug as string | undefined)
+  const restoreVersion = useRestoreWikiVersion()
+
+  // Parse headings from content for Table of Contents
+  const headings = useMemo(() => {
+    if (!wikiPage?.content) return []
+    const regex = /^(#{1,6})\s+(.+)$/gm
+    const result: { level: number; text: string; id: string }[] = []
+    let match
+    while ((match = regex.exec(wikiPage.content)) !== null) {
+      const level = match[1].length
+      const text = match[2].trim()
+      const id = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '')
+      result.push({ level, text, id })
+    }
+    return result
+  }, [wikiPage?.content])
+
+  const headingIds = useMemo(() => headings.map(h => h.id), [headings])
+  const activeHeading = useActiveHeading(headingIds)
 
   const handleStartEdit = () => {
     if (wikiPage) {
@@ -62,6 +94,50 @@ export default function WikiPageViewPage() {
       router.push(`/projects/${projectId}/wiki`)
     } catch (err) {
       console.error('Failed to delete wiki page:', err)
+    }
+  }
+
+  const handleViewVersion = (version: { version: number; content: string }) => {
+    setViewVersion(version)
+  }
+
+  const handleRestoreVersion = async (version: number) => {
+    if (!wikiPage) return
+
+    try {
+      await restoreVersion.mutateAsync({
+        projectId: projectId as string,
+        slug: slug as string,
+        version,
+      })
+      setIsHistoryModalOpen(false)
+      setViewVersion(null)
+    } catch (err) {
+      console.error('Failed to restore version:', err)
+    }
+  }
+
+  // ── Export Wiki Page ─────────────────────────────────────────────────────────
+  const handleExport = async (format: ExportFormat) => {
+    if (!wikiPage) return
+
+    setIsExporting(true)
+    try {
+      if (format === 'pdf') {
+        // Find the wiki content element and convert to PDF
+        const contentEl = document.querySelector('[data-wiki-content]') as HTMLElement
+        if (contentEl) {
+          await elementToPDF(contentEl, {
+            filename: `wiki-${wikiPage.slug}`,
+            title: wikiPage.title,
+            scale: 2,
+          })
+        }
+      }
+    } catch (error) {
+      console.error('Failed to export wiki page:', error)
+    } finally {
+      setIsExporting(false)
     }
   }
 
@@ -126,7 +202,7 @@ export default function WikiPageViewPage() {
                 <span>•</span>
                 <span>Version {wikiPage.version}</span>
                 <span>•</span>
-                <span>Updated {new Date(wikiPage.updatedAt).toLocaleDateString()}</span>
+                <span>Updated {formatDate(wikiPage.updatedAt)}</span>
               </div>
               {wikiPage.parent && (
                 <div className="mt-1 text-sm text-gray-500">
@@ -141,20 +217,28 @@ export default function WikiPageViewPage() {
               )}
             </div>
 
-            {isOwnerOrAdmin && !isEditing && (
-              <div className="flex items-center gap-2">
-                <Button variant="secondary" size="sm" onClick={handleStartEdit}>
-                  Edit
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  onClick={() => setIsDeleteModalOpen(true)}
-                >
-                  Delete
-                </Button>
-              </div>
-            )}
+            <div className="flex items-center gap-2">
+              <Button variant="secondary" size="sm" onClick={() => setIsExportDialogOpen(true)}>
+                Export
+              </Button>
+              <Button variant="secondary" size="sm" onClick={() => setIsHistoryModalOpen(true)}>
+                History
+              </Button>
+              {isOwnerOrAdmin && !isEditing && (
+                <>
+                  <Button variant="secondary" size="sm" onClick={handleStartEdit}>
+                    Edit
+                  </Button>
+                  <Button
+                    variant="danger"
+                    size="sm"
+                    onClick={() => setIsDeleteModalOpen(true)}
+                  >
+                    Delete
+                  </Button>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
@@ -178,42 +262,54 @@ export default function WikiPageViewPage() {
           </div>
         )}
 
-        {/* Content */}
-        <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-          {isEditing ? (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Content
-                </label>
-                <textarea
-                  value={editContent}
-                  onChange={(e) => setEditContent(e.target.value)}
-                  rows={20}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
-                  placeholder="Page content (Markdown supported)"
-                />
+        {/* Main Content + Sidebar */}
+        <div className="flex gap-6">
+          {/* Main Content */}
+          <div className="flex-1 bg-white rounded-xl shadow-sm border border-gray-200 p-6">
+            {isEditing ? (
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Content
+                  </label>
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    rows={20}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono text-sm"
+                    placeholder="Page content (Markdown supported)"
+                  />
+                </div>
+                <div className="flex justify-end gap-3">
+                  <Button variant="secondary" onClick={handleCancelEdit}>
+                    Cancel
+                  </Button>
+                  <Button
+                    variant="primary"
+                    onClick={handleSaveEdit}
+                    isLoading={updateWikiPage.isPending}
+                  >
+                    Save Changes
+                  </Button>
+                </div>
               </div>
-              <div className="flex justify-end gap-3">
-                <Button variant="secondary" onClick={handleCancelEdit}>
-                  Cancel
-                </Button>
-                <Button
-                  variant="primary"
-                  onClick={handleSaveEdit}
-                  isLoading={updateWikiPage.isPending}
-                >
-                  Save Changes
-                </Button>
+            ) : (
+              <div className="prose max-w-none" data-wiki-content>
+                {wikiPage.content ? (
+                  <div className="whitespace-pre-wrap text-gray-700">{wikiPage.content}</div>
+                ) : (
+                  <div className="text-gray-400 italic">No content yet.</div>
+                )}
               </div>
-            </div>
-          ) : (
-            <div className="prose max-w-none">
-              {wikiPage.content ? (
-                <div className="whitespace-pre-wrap text-gray-700">{wikiPage.content}</div>
-              ) : (
-                <div className="text-gray-400 italic">No content yet.</div>
-              )}
+            )}
+          </div>
+
+          {/* Table of Contents Sidebar */}
+          {headings.length > 0 && !isEditing && (
+            <div className="hidden lg:block w-64 flex-shrink-0">
+              <div className="sticky top-6">
+                <WikiTableOfContents headings={headings} activeId={activeHeading} />
+              </div>
             </div>
           )}
         </div>
@@ -246,6 +342,58 @@ export default function WikiPageViewPage() {
           </Button>
         </div>
       </Modal>
+
+      {/* Version History Modal */}
+      <Modal
+        open={isHistoryModalOpen}
+        onOpenChange={setIsHistoryModalOpen}
+        title="Version History"
+        description={viewVersion ? `Viewing version ${viewVersion.version}` : undefined}
+        className="max-w-lg"
+      >
+        {viewVersion ? (
+          <div className="mt-4">
+            <div className="bg-gray-50 rounded-lg p-4 mb-4">
+              <pre className="whitespace-pre-wrap text-sm text-gray-700 max-h-60 overflow-y-auto">
+                {viewVersion.content}
+              </pre>
+            </div>
+            <div className="flex justify-between">
+              <Button variant="secondary" size="sm" onClick={() => setViewVersion(null)}>
+                Back to List
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => handleRestoreVersion(viewVersion.version)}
+                isLoading={restoreVersion.isPending}
+              >
+                Restore This Version
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-4">
+            <WikiVersionHistory
+              versions={versions ?? []}
+              currentVersion={wikiPage.version}
+              onViewVersion={(v) => setViewVersion({ version: v.version, content: v.content })}
+              onRestore={handleRestoreVersion}
+              isRestoring={restoreVersion.isPending}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* Export Dialog */}
+      <ExportDialog
+        open={isExportDialogOpen}
+        onOpenChange={setIsExportDialogOpen}
+        onExport={handleExport}
+        title="Export Wiki Page"
+        description="Choose a format to export this wiki page."
+        isLoading={isExporting}
+      />
     </AuthenticatedLayout>
   )
 }
