@@ -72,7 +72,7 @@ async function getMembers(req: NextApiRequest, res: NextApiResponse, projectId: 
 
 async function addMember(req: NextApiRequest, res: NextApiResponse, projectId: string) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(req, res, authOptions)
     if (!session?.user) {
       return res.status(401).json({ error: 'Unauthorized' })
     }
@@ -191,7 +191,7 @@ async function updateMember(req: NextApiRequest, res: NextApiResponse, projectId
 
 async function removeMember(req: NextApiRequest, res: NextApiResponse, projectId: string) {
   try {
-    const session = await getServerSession(authOptions)
+    const session = await getServerSession(req, res, authOptions)
     if (!session?.user) {
       return res.status(401).json({ error: 'Unauthorized' })
     }

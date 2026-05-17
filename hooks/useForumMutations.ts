@@ -67,7 +67,7 @@ export function useDeleteForum() {
 // ─── Thread mutations ────────────────────────────────────────────────────────
 
 async function createThread(data: CreateThreadInput): Promise<ForumThread> {
-  const res = await fetch('/api/forums/threads', {
+  const res = await fetch(`/api/forums/${data.forumId}/threads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),

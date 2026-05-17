@@ -10,18 +10,18 @@ const UpdateWikiPageSchema = z.object({
 });
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const rawId = req.query['id'];
+  const rawProjectId = req.query['projectId'];
   const rawSlug = req.query['slug'];
-  const id = typeof rawId === 'string' ? rawId : undefined;
+  const projectId = typeof rawProjectId === 'string' ? rawProjectId : undefined;
   const slug = typeof rawSlug === 'string' ? rawSlug : undefined;
 
-  if (!id || !slug) {
+  if (!projectId || !slug) {
     return res.status(400).json({ error: 'Invalid parameters' });
   }
 
   if (req.method === 'GET') {
     const page = await prisma.wikiPage.findUnique({
-      where: { projectId_slug: { projectId: id, slug } },
+      where: { projectId_slug: { projectId, slug } },
       include: {
         author: { select: { id: true, name: true } },
         parent: true,
@@ -44,7 +44,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     const currentPage = await prisma.wikiPage.findUnique({
-      where: { projectId_slug: { projectId: id, slug } },
+      where: { projectId_slug: { projectId, slug } },
     });
 
     if (!currentPage) {
@@ -54,7 +54,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     if (parsed.data.title && parsed.data.title !== currentPage.title) {
       const newSlug = generateSlug(parsed.data.title);
       const existing = await prisma.wikiPage.findUnique({
-        where: { projectId_slug: { projectId: id, slug: newSlug } },
+        where: { projectId_slug: { projectId, slug: newSlug } },
       });
       if (existing && existing.id !== currentPage.id) {
         return res.status(409).json({ error: 'A wiki page with this title already exists' });
@@ -96,7 +96,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (req.method === 'DELETE') {
     const page = await prisma.wikiPage.findUnique({
-      where: { projectId_slug: { projectId: id, slug } },
+      where: { projectId_slug: { projectId, slug } },
     });
 
     if (!page) {
@@ -104,7 +104,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
 
     await prisma.wikiPage.delete({
-      where: { projectId_slug: { projectId: id, slug } },
+      where: { projectId_slug: { projectId, slug } },
     });
 
     return res.json({ deleted: true });

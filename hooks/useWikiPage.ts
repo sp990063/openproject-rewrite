@@ -11,9 +11,8 @@ interface WikiPageResponse extends Omit<WikiPage, 'createdAt' | 'updatedAt' | 'p
   project: { id: string; name: string; identifier: string }
 }
 
-async function fetchWikiPage(idOrSlug: string, bySlug = false): Promise<WikiPageResponse> {
-  const url = bySlug ? `/api/wiki/by-slug/${idOrSlug}` : `/api/wiki/${idOrSlug}`
-  const res = await fetch(url)
+async function fetchWikiPage(projectId: string, slug: string): Promise<WikiPageResponse> {
+  const res = await fetch(`/api/projects/${projectId}/wiki/${slug}`)
   if (!res.ok) throw new Error('Failed to fetch wiki page')
   return res.json()
 }
@@ -21,7 +20,7 @@ async function fetchWikiPage(idOrSlug: string, bySlug = false): Promise<WikiPage
 export function useWikiPage(projectId: string | undefined, slug: string | undefined) {
   return useQuery({
     queryKey: queryKeys.wikiPage(slug ?? ''),
-    queryFn: () => fetchWikiPage(slug!, true),
+    queryFn: () => fetchWikiPage(projectId!, slug!),
     enabled: !!projectId && !!slug,
   })
 }

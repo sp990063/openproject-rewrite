@@ -53,7 +53,6 @@ async function validatePassword(inputPassword: string, user: {
 }
 
 export const authOptions = {
-  adapter: PrismaAdapter(prisma) as ReturnType<typeof PrismaAdapter>,
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID ?? '',

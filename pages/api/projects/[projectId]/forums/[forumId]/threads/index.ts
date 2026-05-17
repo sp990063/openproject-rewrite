@@ -15,7 +15,7 @@ const CreateThreadSchema = z.object({
 
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(authOptions)
+  const session = await getServerSession(req, res, authOptions)
   if (!session) {
     return res.status(401).json({ error: 'UNAUTHORIZED' })
   }

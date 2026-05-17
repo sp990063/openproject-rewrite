@@ -10,19 +10,19 @@ const updateThreadSchema = z.object({
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { query } = req
-  const id = query.id as string
+  const threadId = query.threadId as string
 
-  if (!id) {
+  if (!threadId) {
     return res.status(400).json({ error: 'Thread ID is required' })
   }
 
   switch (req.method) {
     case 'GET':
-      return getThread(req, res, id)
+      return getThread(req, res, threadId)
     case 'PATCH':
-      return updateThread(req, res, id)
+      return updateThread(req, res, threadId)
     case 'DELETE':
-      return deleteThread(req, res, id)
+      return deleteThread(req, res, threadId)
     default:
       res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
       return res.status(405).json({ error: `Method ${req.method} not allowed` })

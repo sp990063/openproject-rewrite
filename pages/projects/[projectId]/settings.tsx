@@ -135,8 +135,15 @@ export default function ProjectSettingsPage() {
     queryFn: fetchRoles,
   })
 
-  // State for forms
+  // Tab state — initialized from URL param after mount (Pages Router router.isReady issue)
   const [activeTab, setActiveTab] = useState('general')
+
+  React.useEffect(() => {
+    if (router.isReady && router.query.tab) {
+      const tab = router.query.tab as string
+      if (tab === 'members' || tab === 'modules') setActiveTab(tab)
+    }
+  }, [router.isReady, router.query.tab])
   const [projectName, setProjectName] = useState('')
   const [projectDescription, setProjectDescription] = useState('')
   const [projectStatus, setProjectStatus] = useState<ProjectStatus>('active')
