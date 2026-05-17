@@ -56,8 +56,10 @@ export default function NotificationsPage() {
     markAllRead.mutate()
   }
 
-  const notifications = data?.data ?? []
-  const meta = data?.meta
+  const rawData = data
+  const notificationsData = (rawData && typeof rawData === 'object' && !Array.isArray(rawData)) ? rawData : null
+  const notifications: any[] = notificationsData?.notifications ?? []
+  const meta = notificationsData?.meta ?? { page: 1, perPage: 20, total: 0, totalPages: 0, unreadCount: 0 }
 
   return (
     <AuthenticatedLayout>
