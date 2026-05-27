@@ -16,6 +16,7 @@ interface LdapServer {
 export default function LdapAdminPage() {
   const qc = useQueryClient()
   const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({
     name: '', url: '', port: '389', baseDn: '',
     bindDn: '', bindPassword: '', useTLS: false,
@@ -47,20 +48,65 @@ export default function LdapAdminPage() {
       fetch(`/api/ldap/servers/${id}/sync`, { method: 'POST' }).then(r => r.json()),
   })
 
+  const deleteMut = useMutation({
+    mutationFn: (id: string) =>
+      fetch(`/api/ldap/servers/${id}`, { method: 'DELETE' }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['ldap-servers'] }); setEditingId(null) },
+  })
+
+  const handleEdit = (server: LdapServer) => {
+    setEditingId(server.id)
+    setForm({
+      name: server.name,
+      url: server.url,
+      port: String(server.port),
+      baseDn: server.baseDn,
+      bindDn: server.bindDn ?? '',
+      bindPassword: '',
+      useTLS: server.useTLS,
+    })
+    setShowForm(true)
+  }
+
+  const handleDelete = (id: string) => {
+    if (window.confirm('Delete this LDAP server?')) {
+      deleteMut.mutate(id)
+    }
+  }
+
+  const handleSubmit = () => {
+    const payload = { ...form, port: parseInt(form.port, 10) }
+    if (editingId) {
+      updateMut.mutate({ id: editingId, payload })
+    } else {
+      createMut.mutate(payload)
+    }
+  }
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, payload }: { id: string; payload: any }) =>
+      fetch(`/api/ldap/servers/${id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      }).then(r => r.json()),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['ldap-servers'] }); setEditingId(null); setShowForm(false) },
+  })
+
   return (
     <>
       <Head><title>LDAP Authentication — Admin</title></Head>
       <div className="container mx-auto max-w-4xl py-8">
         <div className="flex items-center justify-between mb-6">
           <h1 className="text-2xl font-bold">LDAP Authentication</h1>
-          <Button onClick={() => setShowForm(!showForm)}>
+          <Button onClick={() => { setShowForm(!showForm); if (showForm) setEditingId(null) }}>
             {showForm ? 'Cancel' : '+ Add Server'}
           </Button>
         </div>
 
         {showForm && (
           <Card className="mb-6">
-            <CardHeader><CardTitle>New LDAP Server</CardTitle></CardHeader>
+            <CardHeader><CardTitle>{editingId ? 'Edit LDAP Server' : 'New LDAP Server'}</CardTitle></CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4">
                 <Input label="Name" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} placeholder="Corporate LDAP" />
@@ -71,7 +117,7 @@ export default function LdapAdminPage() {
                 <Input label="Bind Password" type="password" value={form.bindPassword} onChange={e => setForm({ ...form, bindPassword: e.target.value })} />
               </div>
               <div className="mt-4 flex gap-2">
-                <Button onClick={() => createMut.mutate(form)}>Create Server</Button>
+                <Button onClick={handleSubmit}>{editingId ? 'Update Server' : 'Create Server'}</Button>
               </div>
             </CardContent>
           </Card>
@@ -96,12 +142,20 @@ export default function LdapAdminPage() {
                 </div>
                 <div className="flex gap-2">
                   <Button size="sm" variant="secondary"
+                    onClick={() => handleEdit(server)}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="secondary"
                     onClick={() => testMut.mutate(server.id)}>
                     {testMut.isPending ? 'Testing...' : 'Test Connection'}
                   </Button>
                   <Button size="sm" variant="secondary"
                     onClick={() => syncMut.mutate(server.id)}>
                     {syncMut.isPending ? 'Syncing...' : 'Sync Users'}
+                  </Button>
+                  <Button size="sm" variant="danger"
+                    onClick={() => handleDelete(server.id)}>
+                    {deleteMut.isPending ? 'Deleting...' : 'Delete'}
                   </Button>
                 </div>
               </div>

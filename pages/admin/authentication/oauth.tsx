@@ -1,7 +1,7 @@
 export const dynamic = 'force-dynamic'
 // pages/admin/authentication/oauth.tsx
 import Head from 'next/head'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -18,10 +18,12 @@ export default function OAuthAdminPage() {
   })
 
   // Populate form when data loads
-  if (data && !googleClientId && !googleClientSecret) {
-    setGoogleClientId(data.googleClientId ?? '')
-    setGoogleClientSecret(data.googleClientSecret ?? '')
-  }
+  useEffect(() => {
+    if (data && googleClientId === '' && googleClientSecret === '') {
+      setGoogleClientId(data.googleClientId ?? '')
+      setGoogleClientSecret(data.googleClientSecret ?? '')
+    }
+  }, [data])
 
   const saveMut = useMutation({
     mutationFn: (payload: { googleClientId: string; googleClientSecret: string }) =>
