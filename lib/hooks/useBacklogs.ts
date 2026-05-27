@@ -5,6 +5,7 @@ export interface Sprint {
   id: string; projectId: string; name: string
   startDate: string; endDate: string; capacity?: number
   velocity?: number; status: 'OPEN' | 'ACTIVE' | 'CLOSED'
+  storyPoints?: number; assignee?: { id: string; name: string } | null
   sprintMembers: { id: string; userId: string; capacity: number }[]
 }
 

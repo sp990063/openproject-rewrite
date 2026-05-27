@@ -65,9 +65,10 @@ export function processMacros(content: string): string {
   )
 
   // {{parent_page}} - link to parent page
+  // Note: parentSlug is a placeholder that the client-side WikiMarkdown will update
   processed = processed.replace(
     /\{\{parent_page\}\}/g,
-    `<div class="wiki-macro wiki-macro-parent-page"><a href="#" class="wiki-macro-parent-link">Parent page</a></div>`
+    `<div class="wiki-macro wiki-macro-parent-page" data-parent-page=""><a href="#" class="wiki-macro-parent-link">Parent page</a></div>`
   )
 
   return processed

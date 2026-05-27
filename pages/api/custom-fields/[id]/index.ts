@@ -1,11 +1,15 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions, isSystemAdmin } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const session = await getServerSession(req, res, authOptions)
-  if (!session?.user?.isSystemAdmin) {
+  if (!session?.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  const isAdmin = await isSystemAdmin(session.user.id)
+  if (!isAdmin) {
     return res.status(403).json({ error: 'Admin only' })
   }
 

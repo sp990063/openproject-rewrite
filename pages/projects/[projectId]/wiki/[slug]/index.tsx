@@ -297,7 +297,7 @@ export default function WikiPageViewPage() {
             ) : (
               <div className="prose max-w-none" data-wiki-content>
                 {wikiPage.content ? (
-                  <WikiMarkdown content={wikiPage.content} className="text-gray-700" />
+                  <WikiMarkdown content={wikiPage.content} className="text-gray-700" projectId={projectId as string} slug={slug as string} parentSlug={wikiPage.parent?.slug} />
                 ) : (
                   <div className="text-gray-400 italic">No content yet.</div>
                 )}

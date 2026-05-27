@@ -6,6 +6,10 @@ interface SprintBoardProps {
   sprintId: string
 }
 
+interface WorkPackageCard {
+  id: string; subject: string; statusId: string; storyPoints?: number | null; assignee?: { name: string } | null
+}
+
 export function SprintBoard({ sprintId }: SprintBoardProps) {
   const { data, isLoading } = useSprintBoard(sprintId)
   const moveMutation = useMoveWorkPackage()
@@ -13,7 +17,7 @@ export function SprintBoard({ sprintId }: SprintBoardProps) {
 
   if (isLoading) return <div className="animate-pulse h-64 bg-gray-100 rounded" />
 
-  const workPackages = data?.workPackages ?? []
+  const workPackages: WorkPackageCard[] = data?.workPackages ?? []
   const columns = [
     { id: 'NEW', label: 'New' },
     { id: 'IN_PROGRESS', label: 'In Progress' },
@@ -37,7 +41,7 @@ export function SprintBoard({ sprintId }: SprintBoardProps) {
             onDragOver={e => e.preventDefault()}
             onDrop={() => handleDrop(col.id)}
           >
-            {workPackages.filter(wp => wp.statusId === col.id).map(wp => (
+            {workPackages.filter((wp: WorkPackageCard) => wp.statusId === col.id).map(wp => (
               <div
                 key={wp.id}
                 draggable
@@ -55,7 +59,7 @@ export function SprintBoard({ sprintId }: SprintBoardProps) {
                 )}
               </div>
             ))}
-            {workPackages.filter(wp => wp.statusId === col.id).length === 0 && (
+            {workPackages.filter((wp: WorkPackageCard) => wp.statusId === col.id).length === 0 && (
               <div className="text-center py-8 text-xs text-gray-400">No items</div>
             )}
           </div>

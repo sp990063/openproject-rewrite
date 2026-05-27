@@ -1,19 +1,20 @@
 // components/backlogs/BurndownChart.tsx
 import { useBurndown } from '@/lib/hooks/useBacklogs'
+import type { BurndownPoint } from '@/lib/hooks/useBacklogs'
 
 interface BurndownChartProps {
-  sprintId: string
+  sprintId: string | null
 }
 
 export function BurndownChart({ sprintId }: BurndownChartProps) {
   const { data } = useBurndown(sprintId)
-  const points = data?.burndown ?? []
+  const points: BurndownPoint[] = data?.burndown ?? []
 
   if (points.length < 2) {
     return <div className="text-center py-8 text-gray-400">Record daily progress to see the burndown chart</div>
   }
 
-  const maxVal = Math.max(...points.map(p => Math.max(p.remaining, p.ideal)))
+  const maxVal = Math.max(...points.map((p: BurndownPoint) => Math.max(p.remaining, p.ideal)))
 
   return (
     <div className="w-full h-48">
@@ -34,7 +35,7 @@ export function BurndownChart({ sprintId }: BurndownChartProps) {
         {/* Ideal line */}
         <polyline
           fill="none" stroke="#94a3b8" strokeWidth="2" strokeDasharray="5,3"
-          points={points.map((p, i) => {
+          points={points.map((p: BurndownPoint, i: number) => {
             const x = 40 + (i / Math.max(points.length - 1, 1)) * 350
             const y = 178 - (p.ideal / maxVal) * 168
             return `${x},${y}`
@@ -43,14 +44,14 @@ export function BurndownChart({ sprintId }: BurndownChartProps) {
         {/* Actual line */}
         <polyline
           fill="none" stroke="#3b82f6" strokeWidth="2.5"
-          points={points.map((p, i) => {
+          points={points.map((p: BurndownPoint, i: number) => {
             const x = 40 + (i / Math.max(points.length - 1, 1)) * 350
             const y = 178 - (p.remaining / maxVal) * 168
             return `${x},${y}`
           }).join(' ')}
         />
         {/* Dots on actual */}
-        {points.map((p, i) => {
+        {points.map((p: BurndownPoint, i: number) => {
           const x = 40 + (i / Math.max(points.length - 1, 1)) * 350
           const y = 178 - (p.remaining / maxVal) * 168
           return <circle key={i} cx={x} cy={y} r="3" fill="#3b82f6" />

@@ -1,240 +1,240 @@
 {
-  "timestamp": "2026-05-27T03:02:14.462Z",
+  "timestamp": "2026-05-27T13:04:22.596Z",
   "base": "http://localhost:3333",
   "projectId": "cmo4ojw5r000gy8qxbipmo46s",
-  "elapsed_s": 2.8,
+  "elapsed_s": 0.1,
   "total": 38,
-  "passCount": 29,
-  "failCount": 9,
-  "timeoutCount": 0,
+  "passCount": 0,
+  "failCount": 0,
+  "timeoutCount": 38,
   "results": [
     {
       "name": "Landing page",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><m"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Login page",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><m"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Dashboard",
-      "status": "PASS",
-      "httpStatus": 307,
-      "note": "/login?callbackUrl=%2Fdashboard"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Admin page",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><m"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "OAuth providers",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "{\"google\":{\"id\":\"google\",\"name\":\"Google\",\"type\":\"oauth\",\"signinUrl\":\"http://loca"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Signin (Google)",
-      "status": "PASS",
-      "httpStatus": 302,
+      "status": "TIMEOUT",
+      "httpStatus": null,
       "note": ""
     },
     {
       "name": "Work packages (all)",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[]"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Work package by ID",
-      "status": "FAIL",
-      "httpStatus": 404,
-      "note": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><m"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Work package types",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmo4ojvob0007y8qxrv13hxkj\",\"name\":\"Task\",\"color\":\"#3498db\",\"position\":0,"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Statuses",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmo4ojvn60003y8qxb971f7zm\",\"name\":\"New\",\"color\":\"#3498db\",\"position\":0,\""
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Priorities",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmo4ojvpi000by8qxnnlqzsr6\",\"name\":\"Low\",\"color\":\"#95a5a6\",\"position\":0},"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Relations",
-      "status": "FAIL",
-      "httpStatus": 404,
-      "note": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><m"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Project detail",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "{\"id\":\"cmo4ojw5r000gy8qxbipmo46s\",\"name\":\"Demo Project Updated\",\"description\":\"T"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Project members",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmo4ojw63000hy8qx5rmf0723\",\"userId\":\"cmo4ojw4f000fy8qxlc7vo4ox\",\"project"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Board list",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[]"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Board columns",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmo4ojvn60003y8qxb971f7zm\",\"name\":\"New\",\"color\":\"#3498db\",\"position\":0,\""
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "WIP limits",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[]"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Gantt (same as WP)",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[]"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Calendar (same WP API)",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[]"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Wiki pages",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmp9e64df0003cgqxtjcvyw0t\",\"projectId\":\"cmo4ojw5r000gy8qxbipmo46s\",\"titl"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Wiki page detail",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "{\"id\":\"cmp9e64df0003cgqxtjcvyw0t\",\"projectId\":\"cmo4ojw5r000gy8qxbipmo46s\",\"title"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Wiki by-slug",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "{\"id\":\"cmp9e64df0003cgqxtjcvyw0t\",\"projectId\":\"cmo4ojw5r000gy8qxbipmo46s\",\"title"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Forums list",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmp8o27sp000a7xqxlwn3i9ib\",\"projectId\":\"cmo4ojw5r000gy8qxbipmo46s\",\"name"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Forum detail",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "{\"id\":\"cmp8o27sp000a7xqxlwn3i9ib\",\"projectId\":\"cmo4ojw5r000gy8qxbipmo46s\",\"name\""
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Forum threads",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmp8p4vqr000o7xqxvgfkgh4d\",\"forumId\":\"cmp8o27sp000a7xqxlwn3i9ib\",\"subjec"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "News",
-      "status": "FAIL",
-      "httpStatus": 401,
-      "note": "{\"error\":\"Unauthorized\"}"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Documents",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[]"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Meetings",
-      "status": "FAIL",
-      "httpStatus": 401,
-      "note": "{\"error\":\"Unauthorized\"}"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Activities",
-      "status": "FAIL",
-      "httpStatus": 401,
-      "note": "{\"error\":\"Unauthorized\"}"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Members (global)",
-      "status": "FAIL",
-      "httpStatus": 404,
-      "note": "<!DOCTYPE html><html lang=\"en\"><head><meta charSet=\"utf-8\" data-next-head=\"\"/><m"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Project members",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmo4ojw63000hy8qx5rmf0723\",\"userId\":\"cmo4ojw4f000fy8qxlc7vo4ox\",\"project"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Roles",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "[{\"id\":\"cmo4ojvkt0000y8qxwsvq789d\",\"name\":\"Admin\",\"permissions\":[\"manage_project"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Notifications",
-      "status": "FAIL",
-      "httpStatus": 401,
-      "note": "{\"error\":\"Unauthorized\"}"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Search",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "{\"query\":\"demo\",\"results\":[],\"total\":0,\"limit\":20,\"offset\":0}"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Queries",
-      "status": "FAIL",
-      "httpStatus": 401,
-      "note": "{\"error\":\"Unauthorized\"}"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Time entries",
-      "status": "FAIL",
-      "httpStatus": 401,
-      "note": "{\"error\":\"Unauthorized\"}"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Health check",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "{\"status\":\"ok\",\"timestamp\":\"2026-05-27T03:02:14.409Z\",\"version\":\"0.1.0\",\"service"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     },
     {
       "name": "Metrics",
-      "status": "PASS",
-      "httpStatus": 200,
-      "note": "# HELP http_request_duration_seconds Duration of HTTP requests in seconds\n# TYPE"
+      "status": "TIMEOUT",
+      "httpStatus": null,
+      "note": ""
     }
   ]
 }

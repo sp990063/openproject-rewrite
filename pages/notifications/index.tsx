@@ -1,6 +1,6 @@
 export const dynamic = 'force-dynamic'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
@@ -39,9 +39,12 @@ function getNotificationLink(notification: any): string {
 }
 
 
+const PAGE_SIZE = 20
+
 export default function NotificationsPage() {
   const router = useRouter()
-  const { data, isLoading } = useNotifications(1)
+  const [page, setPage] = useState(1)
+  const { data, isLoading } = useNotifications({ page, perPage: PAGE_SIZE })
   const markAsRead = useMarkNotificationAsRead()
   const markAllRead = useMarkAllNotificationsRead()
 
@@ -157,21 +160,30 @@ export default function NotificationsPage() {
         </div>
 
         {/* Pagination */}
-        {meta && meta.totalPages > 1 && (
-          <div className="mt-4 flex justify-center gap-2">
-            {Array.from({ length: meta.totalPages }, (_, i) => (
+        {meta && meta.totalPages > 0 && (
+          <div className="mt-4 flex items-center justify-between">
+            <div className="text-sm text-gray-500">
+              Showing {((meta.page - 1) * meta.perPage) + 1} to {Math.min(meta.page * meta.perPage, meta.total)} of {meta.total} notifications
+            </div>
+            <div className="flex items-center gap-2">
               <button
-                key={i}
-                className={`px-3 py-1 rounded text-sm ${
-                  meta.page === i + 1
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-white text-gray-700 border border-gray-200'
-                }`}
-                onClick={() => {/* TODO: implement pagination */}}
+                className="px-3 py-1 rounded text-sm border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={meta.page <= 1}
               >
-                {i + 1}
+                Previous
               </button>
-            ))}
+              <span className="text-sm text-gray-700">
+                Page {meta.page} of {meta.totalPages}
+              </span>
+              <button
+                className="px-3 py-1 rounded text-sm border border-gray-200 bg-white text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50"
+                onClick={() => setPage(p => Math.min(meta.totalPages, p + 1))}
+                disabled={meta.page >= meta.totalPages}
+              >
+                Next
+              </button>
+            </div>
           </div>
         )}
       </div>

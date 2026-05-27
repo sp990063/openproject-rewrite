@@ -88,22 +88,22 @@ export default function BacklogsPage({ params }: BacklogsPageProps) {
         )}
 
         {/* Sprint board */}
-        {selectedSprint && (
+        {selectedSprintId && (
           <div className="mt-8">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-semibold">{selectedSprint.name} — Board</h2>
+              <h2 className="text-xl font-semibold">{selectedSprint?.name} — Board</h2>
               <Button variant="ghost" size="sm" onClick={() => setSelectedSprintId(null)}>Close</Button>
             </div>
-            <SprintBoard sprintId={selectedSprint.id} />
+            <SprintBoard sprintId={selectedSprintId} />
           </div>
         )}
 
         {/* Burndown chart */}
-        {selectedSprint && (
+        {selectedSprintId && (
           <div className="mt-8">
             <h2 className="text-xl font-semibold mb-4">Burndown Chart</h2>
             <div className="bg-white border rounded-lg p-4">
-              <BurndownChart sprintId={selectedSprint.id} />
+              <BurndownChart sprintId={selectedSprintId} />
             </div>
           </div>
         )}
@@ -111,7 +111,7 @@ export default function BacklogsPage({ params }: BacklogsPageProps) {
 
       {/* Create Sprint Modal */}
       {showCreate && (
-        <Modal open onClose={() => setShowCreate(false)} title="Create Sprint">
+        <Modal open onOpenChange={(open) => !open && setShowCreate(false)} title="Create Sprint">
           <div className="space-y-4 p-4">
             <Input
               label="Sprint Name"

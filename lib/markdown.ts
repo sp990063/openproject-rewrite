@@ -27,7 +27,7 @@ const ALLOWED_TAGS = [
   'div', 'span',
 ];
 
-const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'className', 'target', 'rel', 'data-page', 'id'];
+const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'className', 'target', 'rel', 'data-page', 'data-project', 'data-parent-page', 'id'];
 
 /**
  * Rehype plugin: inject id attributes into heading elements.
