@@ -66,6 +66,7 @@ export interface UpdateForumInput {
 }
 
 export interface CreateThreadInput {
+  projectId: string
   forumId: string
   subject: string
   authorId: string
@@ -80,6 +81,8 @@ export interface UpdateThreadInput {
 }
 
 export interface CreatePostInput {
+  projectId: string
+  forumId: string
   threadId: string
   content: string
   authorId: string

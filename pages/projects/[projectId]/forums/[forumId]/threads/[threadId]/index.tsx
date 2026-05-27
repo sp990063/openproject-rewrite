@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
 import { Button, Modal, Textarea } from '@/components/ui'
 import { ForumMessageCard } from '@/components/forums/ForumMessageCard'
+import { useCreatePost } from '@/hooks/useForumMutations'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { queryKeys } from '@/queries/queryKeys'
 import { formatDate } from '@/lib/utils'
@@ -48,24 +49,6 @@ async function fetchPosts(
   return res.json()
 }
 
-async function createPost(
-  projectId: string,
-  forumId: string,
-  threadId: string,
-  content: string
-): Promise<{ post: ForumPost }> {
-  const res = await fetch(
-    `/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/posts`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content }),
-    }
-  )
-  if (!res.ok) throw new Error('Failed to create post')
-  return res.json()
-}
-
 export default function ThreadDetailPage() {
   const router = useRouter()
   const { projectId, forumId, threadId } = router.query
@@ -93,27 +76,22 @@ export default function ThreadDetailPage() {
     refetchInterval: 30000,
   })
 
-  const createPostMutation = useMutation({
-    mutationFn: (content: string) =>
-      createPost(projectId as string, forumId as string, threadId as string, content),
-    onSuccess: async () => {
-      setReplyContent('')
-      setIsReplyModalOpen(false)
-      await queryClient.invalidateQueries({
-        queryKey: ['forum-thread-detail', projectId, forumId, threadId],
-      })
-      await queryClient.invalidateQueries({
-        queryKey: ['forum-posts-detail', projectId, forumId, threadId],
-      })
-    },
-  })
+  const createPostMutation = useCreatePost()
 
   const handleSubmitReply = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!replyContent.trim()) return
     setIsSubmitting(true)
     try {
-      await createPostMutation.mutateAsync(replyContent)
+      await createPostMutation.mutateAsync({
+        projectId: projectId as string,
+        forumId: forumId as string,
+        threadId: threadId as string,
+        content: replyContent,
+        authorId: currentUser?.id ?? '',
+      })
+      setReplyContent('')
+      setIsReplyModalOpen(false)
     } finally {
       setIsSubmitting(false)
     }

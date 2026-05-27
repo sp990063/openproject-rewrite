@@ -43,17 +43,18 @@ async function fetchMeetings(
   projectId: string,
   options?: { startAfter?: string; endBefore?: string }
 ): Promise<Meeting[]> {
-  const params = new URLSearchParams({ projectId })
+  const params = new URLSearchParams()
   if (options?.startAfter) params.set('startAfter', options.startAfter)
   if (options?.endBefore) params.set('endBefore', options.endBefore)
 
-  const res = await fetch(`/api/meetings?${params.toString()}`)
+  const url = `/api/projects/${projectId}/meetings${params.toString() ? '?' + params.toString() : ''}`
+  const res = await fetch(url)
   if (!res.ok) throw new Error('Failed to fetch meetings')
   return res.json()
 }
 
-async function fetchMeeting(id: string): Promise<Meeting> {
-  const res = await fetch(`/api/meetings/${id}`)
+async function fetchMeeting(projectId: string, id: string): Promise<Meeting> {
+  const res = await fetch(`/api/projects/${projectId}/meetings/${id}`)
   if (!res.ok) throw new Error('Failed to fetch meeting')
   return res.json()
 }
@@ -69,10 +70,10 @@ export function useMeetings(
   })
 }
 
-export function useMeeting(meetingId: string | undefined) {
+export function useMeeting(projectId: string | undefined, meetingId: string | undefined) {
   return useQuery({
     queryKey: queryKeys.meeting(meetingId ?? ''),
-    queryFn: () => fetchMeeting(meetingId!),
-    enabled: !!meetingId,
+    queryFn: () => fetchMeeting(projectId!, meetingId!),
+    enabled: !!projectId && !!meetingId,
   })
 }

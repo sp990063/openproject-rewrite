@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import {
   DndContext,
   DragOverlay,
@@ -11,13 +12,14 @@ import {
 } from '@dnd-kit/core'
 import { useRouter } from 'next/router'
 import { useWorkPackages, useUpdateWorkPackage, useReorderWorkPackage } from '@/hooks/use-work-packages'
-import { useWipLimits } from '@/hooks/use-wip-limits'
+import { useWipLimits, useUpdateWipLimit } from '@/hooks/use-wip-limits'
+import { WipLimitDialog } from './WipLimitDialog'
 import { WorkPackageBoardColumn } from './WorkPackageBoardColumn'
 import { WorkPackageBoardDragLayer } from './WorkPackageBoardDragLayer'
 import { WorkPackageBoardAddCard } from './WorkPackageBoardAddCard'
 import { WorkPackageBoardEmptyState } from './WorkPackageBoardEmptyState'
 import type { BoardColumn } from './types'
-import type { WorkPackageFilter } from '@/types'
+import type { WorkPackageFilter, Status } from '@/types'
 
 interface WorkPackageBoardProps {
   initialFilters?: Partial<WorkPackageFilter>
@@ -40,11 +42,25 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
     ...(resolvedProjectId ? { projectId: resolvedProjectId } : {}),
   }))
 
+  // ── WIP dialog state ─────────────────────────────────────────────────────────
+  const [wipDialogOpen, setWipDialogOpen] = useState(false)
+
   // ── Data ─────────────────────────────────────────────────────────────────────
   const { workPackages } = useWorkPackages(filters as WorkPackageFilter)
   const { data: wipLimits = [] } = useWipLimits(resolvedProjectId ?? '')
+  const updateWipLimit = useUpdateWipLimit(resolvedProjectId ?? '')
   const updateWorkPackage = useUpdateWorkPackage()
   const reorderWorkPackage = useReorderWorkPackage()
+
+  // ── Statuses lookup (for WIP limit dialog) ───────────────────────────────────
+  const { data: availableStatuses = [] } = useQuery<Status[]>({
+    queryKey: ['statuses'],
+    queryFn: async () => {
+      const r = await fetch('/api/statuses')
+      if (!r.ok) throw new Error('Failed to fetch statuses')
+      return r.json()
+    },
+  })
 
   const wpData = workPackages.data ?? []
 
@@ -181,17 +197,7 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
           </div>
           {resolvedProjectId && (
             <button
-              onClick={() => {
-                const statusId = prompt('Enter status ID to set WIP limit:')
-                if (!statusId || !resolvedProjectId) return
-                const limitStr = prompt('Enter WIP limit (empty = unlimited):')
-                const limit = limitStr === null ? null : limitStr === '' ? null : parseInt(limitStr, 10)
-                if (limit !== null && isNaN(limit)) return
-                import('@/hooks/use-wip-limits').then(({ useUpdateWipLimit }) => {
-                  // Use a refetch approach — for now, just reload the page
-                  window.location.reload()
-                })
-              }}
+              onClick={() => setWipDialogOpen(true)}
               className="px-3 py-1 text-xs border border-gray-300 rounded hover:bg-gray-50"
             >
               Configure WIP Limits
@@ -241,6 +247,20 @@ export function WorkPackageBoard({ initialFilters = {}, projectId }: WorkPackage
             onClose={() => setAddingToStatusId(null)}
           />
         </div>
+      )}
+
+      {/* WIP limit configuration dialog */}
+      {resolvedProjectId && (
+        <WipLimitDialog
+          open={wipDialogOpen}
+          onOpenChange={setWipDialogOpen}
+          statuses={availableStatuses}
+          existingLimits={wipLimits}
+          projectId={resolvedProjectId}
+          onUpdate={async (statusId, limit) => {
+            await updateWipLimit.mutateAsync({ statusId, limit })
+          }}
+        />
       )}
     </div>
   )

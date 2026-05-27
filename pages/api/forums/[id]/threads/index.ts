@@ -24,7 +24,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function getThreads(req: NextApiRequest, res: NextApiResponse) {
   try {
-    const { forumId } = req.query
+    // Accept forumId as query param OR extract from /forums/[id]/threads route
+    let { forumId } = req.query
+    if (!forumId && req.query.id) {
+      forumId = req.query.id
+    }
 
     if (!forumId) {
       return res.status(400).json({ error: 'forumId is required' })

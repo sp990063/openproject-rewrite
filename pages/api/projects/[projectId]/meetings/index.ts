@@ -39,7 +39,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       orderBy: { startTime: 'asc' },
     })
-    return res.json({ meetings })
+    return res.status(200).json({ meetings })
   }
 
   // POST /api/projects/[projectId]/meetings — create meeting

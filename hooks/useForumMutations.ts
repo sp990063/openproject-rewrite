@@ -5,7 +5,7 @@ import { queryKeys } from '@/queries/queryKeys'
 // ─── Forum mutations ─────────────────────────────────────────────────────────
 
 async function createForum(data: CreateForumInput): Promise<Forum> {
-  const res = await fetch('/api/forums', {
+  const res = await fetch(`/api/projects/${data.projectId}/forums`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -14,8 +14,8 @@ async function createForum(data: CreateForumInput): Promise<Forum> {
   return res.json()
 }
 
-async function updateForum(id: string, data: Partial<CreateForumInput>): Promise<Forum> {
-  const res = await fetch(`/api/forums/${id}`, {
+async function updateForum(projectId: string, forumId: string, id: string, data: Partial<CreateForumInput>): Promise<Forum> {
+  const res = await fetch(`/api/projects/${projectId}/forums/${forumId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -24,8 +24,8 @@ async function updateForum(id: string, data: Partial<CreateForumInput>): Promise
   return res.json()
 }
 
-async function deleteForum(id: string): Promise<void> {
-  const res = await fetch(`/api/forums/${id}`, { method: 'DELETE' })
+async function deleteForum(projectId: string, forumId: string, id: string): Promise<void> {
+  const res = await fetch(`/api/projects/${projectId}/forums/${forumId}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete forum')
 }
 
@@ -44,8 +44,8 @@ export function useUpdateForum() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: Partial<CreateForumInput> }) =>
-      updateForum(id, data),
+    mutationFn: ({ projectId, forumId, id, data }: { projectId: string; forumId: string; id: string; data: Partial<CreateForumInput> }) =>
+      updateForum(projectId, forumId, id, data),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.forum(variables.id) })
       void queryClient.invalidateQueries({ queryKey: ['forums'] })
@@ -57,7 +57,8 @@ export function useDeleteForum() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: deleteForum,
+    mutationFn: ({ projectId, forumId, id }: { projectId: string; forumId: string; id: string }) =>
+      deleteForum(projectId, forumId, id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['forums'] })
     },
@@ -67,7 +68,7 @@ export function useDeleteForum() {
 // ─── Thread mutations ────────────────────────────────────────────────────────
 
 async function createThread(data: CreateThreadInput): Promise<ForumThread> {
-  const res = await fetch(`/api/forums/${data.forumId}/threads`, {
+  const res = await fetch(`/api/projects/${data.projectId}/forums/${data.forumId}/threads`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -77,10 +78,12 @@ async function createThread(data: CreateThreadInput): Promise<ForumThread> {
 }
 
 async function updateThread(
+  projectId: string,
+  forumId: string,
   id: string,
   data: { subject?: string; isSticky?: boolean; isLocked?: boolean }
 ): Promise<ForumThread> {
-  const res = await fetch(`/api/forums/threads/${id}`, {
+  const res = await fetch(`/api/projects/${projectId}/forums/${forumId}/threads/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -89,8 +92,8 @@ async function updateThread(
   return res.json()
 }
 
-async function deleteThread(id: string): Promise<void> {
-  const res = await fetch(`/api/forums/threads/${id}`, { method: 'DELETE' })
+async function deleteThread(projectId: string, forumId: string, id: string): Promise<void> {
+  const res = await fetch(`/api/projects/${projectId}/forums/${forumId}/threads/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete thread')
 }
 
@@ -110,8 +113,8 @@ export function useUpdateThread() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { subject?: string; isSticky?: boolean; isLocked?: boolean } }) =>
-      updateThread(id, data),
+    mutationFn: ({ projectId, forumId, id, data }: { projectId: string; forumId: string; id: string; data: { subject?: string; isSticky?: boolean; isLocked?: boolean } }) =>
+      updateThread(projectId, forumId, id, data),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.id) })
     },
@@ -122,7 +125,8 @@ export function useDeleteThread() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: deleteThread,
+    mutationFn: ({ projectId, forumId, id }: { projectId: string; forumId: string; id: string }) =>
+      deleteThread(projectId, forumId, id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['forum-threads'] })
     },
@@ -132,7 +136,7 @@ export function useDeleteThread() {
 // ─── Post mutations ─────────────────────────────────────────────────────────
 
 async function createPost(data: CreatePostInput): Promise<ForumPost> {
-  const res = await fetch('/api/forums/posts', {
+  const res = await fetch(`/api/projects/${data.projectId}/forums/${data.forumId}/threads/${data.threadId}/posts`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -141,8 +145,14 @@ async function createPost(data: CreatePostInput): Promise<ForumPost> {
   return res.json()
 }
 
-async function updatePost(id: string, data: { content: string }): Promise<ForumPost> {
-  const res = await fetch(`/api/forums/posts/${id}`, {
+async function updatePost(
+  projectId: string,
+  forumId: string,
+  threadId: string,
+  id: string,
+  data: { content: string }
+): Promise<ForumPost> {
+  const res = await fetch(`/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/posts/${id}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -151,8 +161,8 @@ async function updatePost(id: string, data: { content: string }): Promise<ForumP
   return res.json()
 }
 
-async function deletePost(id: string): Promise<void> {
-  const res = await fetch(`/api/forums/posts/${id}`, { method: 'DELETE' })
+async function deletePost(projectId: string, forumId: string, threadId: string, id: string): Promise<void> {
+  const res = await fetch(`/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/posts/${id}`, { method: 'DELETE' })
   if (!res.ok) throw new Error('Failed to delete post')
 }
 
@@ -172,7 +182,8 @@ export function useUpdatePost() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ id, data }: { id: string; data: { content: string } }) => updatePost(id, data),
+    mutationFn: ({ projectId, forumId, threadId, id, data }: { projectId: string; forumId: string; threadId: string; id: string; data: { content: string } }) =>
+      updatePost(projectId, forumId, threadId, id, data),
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: ['forum-posts'] })
     },
@@ -183,7 +194,8 @@ export function useDeletePost() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: deletePost,
+    mutationFn: ({ projectId, forumId, threadId, id }: { projectId: string; forumId: string; threadId: string; id: string }) =>
+      deletePost(projectId, forumId, threadId, id),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['forum-posts'] })
     },
@@ -196,9 +208,10 @@ export function useLockThread() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (id: string) => updateThread(id, { isLocked: true }),
-    onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(id) })
+    mutationFn: ({ projectId, forumId, id }: { projectId: string; forumId: string; id: string }) =>
+      updateThread(projectId, forumId, id, { isLocked: true }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.id) })
     },
   })
 }
@@ -207,9 +220,10 @@ export function useUnlockThread() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: (id: string) => updateThread(id, { isLocked: false }),
-    onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(id) })
+    mutationFn: ({ projectId, forumId, id }: { projectId: string; forumId: string; id: string }) =>
+      updateThread(projectId, forumId, id, { isLocked: false }),
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.id) })
     },
   })
 }
@@ -220,16 +234,16 @@ export function usePinThread() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (threadId: string) => {
+    mutationFn: async ({ projectId, forumId, threadId }: { projectId: string; forumId: string; threadId: string }) => {
       const res = await fetch(
-        `/api/projects/undefined/forums/undefined/threads/${threadId}/pin`,
+        `/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/pin`,
         { method: 'POST' }
       )
       if (!res.ok) throw new Error('Failed to pin thread')
       return res.json()
     },
-    onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(id) })
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.threadId) })
     },
   })
 }
@@ -238,16 +252,16 @@ export function useUnpinThread() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async (threadId: string) => {
+    mutationFn: async ({ projectId, forumId, threadId }: { projectId: string; forumId: string; threadId: string }) => {
       const res = await fetch(
-        `/api/projects/undefined/forums/undefined/threads/${threadId}/pin`,
+        `/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/pin`,
         { method: 'POST' }
       )
       if (!res.ok) throw new Error('Failed to unpin thread')
       return res.json()
     },
-    onSuccess: (_data, id) => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(id) })
+    onSuccess: (_data, variables) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.threadId) })
     },
   })
 }
@@ -258,9 +272,9 @@ export function useVotePost() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: async ({ postId, threadId }: { postId: string; threadId: string }) => {
+    mutationFn: async ({ projectId, forumId, postId, threadId }: { projectId: string; forumId: string; postId: string; threadId: string }) => {
       const res = await fetch(
-        `/api/projects/undefined/forums/undefined/posts/${postId}/vote`,
+        `/api/projects/${projectId}/forums/${forumId}/posts/${postId}/vote`,
         { method: 'POST' }
       )
       if (!res.ok) throw new Error('Failed to vote')

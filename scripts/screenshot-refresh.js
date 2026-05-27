@@ -11,7 +11,7 @@ const { chromium } = require('playwright');
 const path = require('path');
 const fs = require('fs');
 
-const BASE_URL = 'http://localhost:3333';
+const BASE_URL = 'http://localhost:3001';
 const OUT_DIR = path.join(__dirname, '..', 'docs', 'images-manual');
 const DEMO_EMAIL = 'demo@example.com';
 const DEMO_PASSWORD = 'demo123';

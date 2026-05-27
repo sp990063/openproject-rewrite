@@ -4,7 +4,7 @@ import React, { useState } from 'react'
 import { useRouter } from 'next/router'
 import Link from 'next/link'
 import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
-import { Button, Modal, Input } from '@/components/ui'
+import { Button, Modal, Input, Textarea } from '@/components/ui'
 import { useForum } from '@/hooks/useForum'
 import { useCreateThread } from '@/hooks/useForumMutations'
 import { useCurrentUser } from '@/hooks/use-current-user'
@@ -20,21 +20,25 @@ export default function ForumDetailPage() {
 
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false)
   const [newSubject, setNewSubject] = useState('')
+  const [newContent, setNewContent] = useState('')
 
   const handleCreateThread = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!forumId || !currentUser?.id) return
+    if (!projectId || !forumId || !currentUser?.id) return
 
     try {
-      const thread = await createThread.mutateAsync({
+      const result = await createThread.mutateAsync({
+        projectId: projectId as string,
         forumId: forumId as string,
         subject: newSubject,
+        content: newContent,
         authorId: currentUser.id,
       })
       setIsCreateModalOpen(false)
       setNewSubject('')
-      // Navigate to thread detail page - the thread detail page would be at /projects/${projectId}/forums/${forumId}/threads/${thread.id}
-      // But we need to check the API structure
+      setNewContent('')
+      // result.thread contains the created thread
+      const thread = result.thread ?? result
       router.push(`/projects/${projectId}/forums/${forumId}/threads/${thread.id}`)
     } catch (err) {
       console.error('Failed to create thread:', err)
@@ -180,6 +184,14 @@ export default function ForumDetailPage() {
             value={newSubject}
             onChange={(e) => setNewSubject(e.target.value)}
             placeholder="Thread subject"
+            required
+          />
+          <Textarea
+            label="First Post"
+            value={newContent}
+            onChange={(e) => setNewContent(e.target.value)}
+            placeholder="Write your first post..."
+            rows={6}
             required
           />
           <div className="flex justify-end gap-3 mt-6">

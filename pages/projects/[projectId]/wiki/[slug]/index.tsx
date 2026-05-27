@@ -11,6 +11,7 @@ import { useWikiVersions } from '@/hooks/useWikiVersions'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { formatDate } from '@/lib/utils'
 import { WikiTableOfContents, useActiveHeading } from '@/components/wiki/WikiTableOfContents'
+import { WikiMarkdown } from '@/components/wiki/WikiMarkdown'
 import { WikiVersionHistory } from '@/components/wiki/WikiVersionHistory'
 import { ExportDialog } from '@/components/exports/ExportDialog'
 import type { ExportFormat } from '@/lib/exporters/pdf'
@@ -23,7 +24,7 @@ export default function WikiPageViewPage() {
   const { data: wikiPage, isLoading, error } = useWikiPage(projectId as string | undefined, slug as string | undefined)
   const updateWikiPage = useUpdateWikiPage()
   const deleteWikiPage = useDeleteWikiPage()
-  const { data: currentUser } = useCurrentUser()
+  const { user: currentUser } = useCurrentUser()
 
   const [isEditing, setIsEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
@@ -296,7 +297,7 @@ export default function WikiPageViewPage() {
             ) : (
               <div className="prose max-w-none" data-wiki-content>
                 {wikiPage.content ? (
-                  <div className="whitespace-pre-wrap text-gray-700">{wikiPage.content}</div>
+                  <WikiMarkdown content={wikiPage.content} className="text-gray-700" />
                 ) : (
                   <div className="text-gray-400 italic">No content yet.</div>
                 )}

@@ -20,7 +20,7 @@ export default function MeetingDetailPage() {
 
   const [activeTab, setActiveTab] = useState('overview')
 
-  const { data, isLoading, error } = useMeeting(id as string | undefined)
+  const { data, isLoading, error } = useMeeting(projectId as string | undefined, id as string | undefined)
   const { data: projectMeetings } = useMeetings(projectId as string | undefined)
   const deleteMeeting = useDeleteMeeting()
   const { user: currentUser } = useCurrentUser()

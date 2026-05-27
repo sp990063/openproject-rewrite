@@ -9,7 +9,7 @@ const wipLimitsSchema = z.object({
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { query } = req
-  const projectId = query.id as string
+  const projectId = query.projectId as string
 
   if (!projectId) {
     return res.status(400).json({ error: 'Project ID is required' })

@@ -21,7 +21,7 @@ export default function EditMeetingPage() {
   const router = useRouter()
   const { projectId, id } = router.query
 
-  const { data, isLoading, error } = useMeeting(id as string | undefined)
+  const { data, isLoading, error } = useMeeting(projectId as string | undefined, id as string | undefined)
   const updateMeeting = useUpdateMeeting()
 
   const [formData, setFormData] = useState<MeetingFormData>({
