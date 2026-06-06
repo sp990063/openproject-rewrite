@@ -15,7 +15,7 @@ interface ForumWithDetails {
 }
 
 async function fetchForums(projectId: string): Promise<ForumWithDetails[]> {
-  const res = await fetch(`/api/forums?projectId=${projectId}`)
+  const res = await fetch(`/api/projects/${projectId}/forums`)
   if (!res.ok) throw new Error('Failed to fetch forums')
   return res.json()
 }

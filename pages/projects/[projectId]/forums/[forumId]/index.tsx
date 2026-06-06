@@ -14,7 +14,10 @@ export default function ForumDetailPage() {
   const router = useRouter()
   const { projectId, forumId } = router.query
 
-  const { data: forum, isLoading, error } = useForum(forumId as string | undefined)
+  const { data: forum, isLoading, error } = useForum(
+    projectId as string | undefined,
+    forumId as string | undefined,
+  )
   const createThread = useCreateThread()
   const { user: currentUser } = useCurrentUser()
 

@@ -49,7 +49,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         projectId,
       },
       include: {
-        author: { select: { id: true, name: true, avatarUrl: true } },
+        author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        project: { select: { id: true, name: true, identifier: true } },
+        threads: {
+          include: {
+            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            _count: { select: { posts: true } },
+          },
+          orderBy: [{ isSticky: 'desc' }, { updatedAt: 'desc' }],
+        },
         _count: {
           select: { threads: true },
         },

@@ -1,8 +1,14 @@
+// hooks/useForum.ts
+//
+// Fetch a single forum + its thread list. Project-scoped URL
+// (Phase 3+ pattern: `/api/projects/[projectId]/forums/[forumId]`).
+// Requires both `projectId` and `forumId` because the project-scoped
+// endpoint verifies the forum belongs to the given project.
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/queries/queryKeys'
 
 // Standalone response type (API shape with relations)
-interface ForumThreadSummary {
+export interface ForumThreadSummary {
   id: string
   forumId: string
   subject: string
@@ -15,7 +21,7 @@ interface ForumThreadSummary {
   _count: { posts: number }
 }
 
-interface ForumWithRelations {
+export interface ForumWithRelations {
   id: string
   projectId: string
   name: string
@@ -28,16 +34,22 @@ interface ForumWithRelations {
   _count: { threads: number }
 }
 
-async function fetchForum(id: string): Promise<ForumWithRelations> {
-  const res = await fetch(`/api/forums/${id}`)
+async function fetchForum(
+  projectId: string,
+  forumId: string,
+): Promise<ForumWithRelations> {
+  const res = await fetch(`/api/projects/${projectId}/forums/${forumId}`)
   if (!res.ok) throw new Error('Failed to fetch forum')
   return res.json()
 }
 
-export function useForum(id: string | undefined) {
+export function useForum(
+  projectId: string | undefined,
+  forumId: string | undefined,
+) {
   return useQuery({
-    queryKey: queryKeys.forum(id ?? ''),
-    queryFn: () => fetchForum(id!),
-    enabled: !!id,
+    queryKey: queryKeys.forum(forumId ?? ''),
+    queryFn: () => fetchForum(projectId!, forumId!),
+    enabled: !!projectId && !!forumId,
   })
 }
