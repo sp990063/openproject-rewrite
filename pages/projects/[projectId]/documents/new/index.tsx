@@ -52,7 +52,6 @@ export default function NewDocumentPage() {
         title: title.trim(),
         description: description.trim() || undefined,
         folderId: folderId || null,
-        authorId: currentUser.id,
       })
 
       // Redirect to documents list

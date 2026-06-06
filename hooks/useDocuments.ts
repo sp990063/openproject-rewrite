@@ -1,3 +1,10 @@
+// hooks/useDocuments.ts
+//
+// Document + folder read hooks, project-scoped (Phase 3+ pattern).
+// Calls the pre-existing project-scoped API:
+//   GET /api/projects/[projectId]/document-folders
+//   GET /api/projects/[projectId]/documents
+// (Plus the standalone /api/documents/folders/[id]/breadcrumb for nav.)
 import { useQuery } from '@tanstack/react-query'
 import type { ProjectDocument, ProjectDocumentFolder } from '@/types'
 import { queryKeys } from '@/queries/queryKeys'
@@ -25,25 +32,39 @@ export interface FolderContents {
 
 async function fetchDocumentFolders(
   projectId: string,
-  parentId?: string | null
+  parentId?: string | null,
 ): Promise<FolderContents> {
-  const params = new URLSearchParams({ projectId })
-  if (parentId) params.set('parentId', parentId)
-  const res = await fetch(`/api/documents/folders?${params}`)
+  // Project-scoped endpoint returns the full folder tree for the project;
+  // we filter by parentId client-side to keep the contract simple.
+  const res = await fetch(`/api/projects/${projectId}/document-folders`)
   if (!res.ok) throw new Error('Failed to fetch document folders')
-  return res.json()
+  const all: FolderWithMeta[] = await res.json()
+  const folders = parentId
+    ? all.filter((f) => f.parent?.id === parentId)
+    : all.filter((f) => !f.parent)
+  return { folders, documents: [], parentFolder: null }
 }
 
 async function fetchDocumentFolderBreadcrumb(
-  folderId: string
+  folderId: string,
 ): Promise<ProjectDocumentFolder[]> {
+  // Breadcrumb is not in the project-scoped API; use the non-scoped
+  // standalone endpoint (still auth-gated, no projectId required).
   const res = await fetch(`/api/documents/folders/${folderId}/breadcrumb`)
   if (!res.ok) throw new Error('Failed to fetch folder breadcrumb')
   return res.json()
 }
 
-async function fetchDocuments(projectId: string): Promise<DocumentWithMeta[]> {
-  const res = await fetch(`/api/documents?projectId=${projectId}`)
+async function fetchDocuments(
+  projectId: string,
+  folderId?: string | null,
+): Promise<DocumentWithMeta[]> {
+  const params = new URLSearchParams()
+  if (folderId) params.set('folderId', folderId)
+  const url = `/api/projects/${projectId}/documents${
+    params.toString() ? `?${params}` : ''
+  }`
+  const res = await fetch(url)
   if (!res.ok) throw new Error('Failed to fetch documents')
   return res.json()
 }
@@ -52,7 +73,7 @@ async function fetchDocuments(projectId: string): Promise<DocumentWithMeta[]> {
 
 export function useDocumentFolders(
   projectId: string | undefined,
-  parentId?: string | null
+  parentId?: string | null,
 ) {
   return useQuery({
     queryKey: queryKeys.documentFolders(projectId ?? '', parentId),
@@ -69,10 +90,13 @@ export function useDocumentFolderBreadcrumb(folderId: string | undefined) {
   })
 }
 
-export function useDocuments(projectId: string | undefined) {
+export function useDocuments(
+  projectId: string | undefined,
+  folderId?: string | null,
+) {
   return useQuery({
-    queryKey: queryKeys.documents(projectId ?? ''),
-    queryFn: () => fetchDocuments(projectId!),
+    queryKey: queryKeys.documents(projectId ?? '', folderId),
+    queryFn: () => fetchDocuments(projectId!, folderId),
     enabled: !!projectId,
   })
 }

@@ -66,7 +66,7 @@ export default function DocumentsIndexPage() {
     if (!confirm('Are you sure you want to delete this document?')) return
 
     try {
-      await deleteDocument.mutateAsync(id)
+      await deleteDocument.mutateAsync({ projectId: projectId as string, id })
       // Refetch documents
       router.replace(router.asPath)
     } catch (err) {

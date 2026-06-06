@@ -6,8 +6,8 @@ import { z } from 'zod';
 import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-response';
-import { generateUploadUrl } from '@/lib/s3';
-import { isAllowedContentType, MAX_FILE_SIZE } from '@/types/file-storage';
+import { generateUploadUrl, getStorageMode } from '@/lib/storage'
+import { isAllowedContentType, MAX_FILE_SIZE } from '@/types/file-storage'
 import path from 'path';
 
 const UploadUrlSchema = z.object({
@@ -83,6 +83,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(201).json(successResponse({
       fileId: file.id,
       uploadUrl,
+      storageKey,
+      storageMode: getStorageMode(),
       expiresAt: new Date(Date.now() + 3600 * 1000).toISOString(),
     }));
   } catch (e) {
