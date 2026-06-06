@@ -1,4 +1,24 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
+
+const SECURITY_HEADERS: Array<{ key: string; value: string }> = [
+  {
+    key: 'Strict-Transport-Security',
+    value: 'max-age=31536000; includeSubDomains; preload',
+  },
+  { key: 'X-Frame-Options', value: 'DENY' },
+  { key: 'X-Content-Type-Options', value: 'nosniff' },
+  { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+  {
+    key: 'Permissions-Policy',
+    value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+  },
+  { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+  { key: 'Cross-Origin-Resource-Policy', value: 'same-origin' },
+  { key: 'X-DNS-Prefetch-Control', value: 'off' },
+  // Note: Content-Security-Policy is set in middleware.ts because it
+  // needs to vary based on NODE_ENV (dev vs prod) for HMR support.
+  // Static fallback here would break Next.js dev HMR.
+]
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
@@ -9,6 +29,16 @@ const nextConfig: NextConfig = {
     ignoreDuringBuilds: true,
   },
   output: 'standalone',
-};
+  // Framework-level security headers (backup to middleware).
+  // Applied to all routes including static assets.
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: SECURITY_HEADERS,
+      },
+    ]
+  },
+}
 
-export default nextConfig;
+export default nextConfig

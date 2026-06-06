@@ -1,7 +1,14 @@
+// pages/api/projects/[projectId]/index.ts
+// Phase 0 security fix: PATCH/DELETE previously had no auth at all —
+// anyone could rename or permanently delete any project. GET remains
+// public-readable (project membership visibility is enforced elsewhere).
+// TODO Phase 1: migrate the whole file to withRoute HOF + rbac callback.
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { checkRateLimit } from '@/lib/ratelimit'
+import { authOptions } from '@/lib/auth'
 
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -67,6 +74,20 @@ async function getProject(req: NextApiRequest, res: NextApiResponse, projectId: 
 }
 
 async function updateProject(req: NextApiRequest, res: NextApiResponse, projectId: string) {
+  // Phase 0: auth + admin RBAC
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  if (!session.user.isSystemAdmin) {
+    const member = await prisma.member.findUnique({
+      where: { userId_projectId: { userId: session.user.id, projectId } },
+      include: { role: { select: { permissions: true } } },
+    })
+    if (!member || !member.role.permissions.includes('PROJECT_EDIT')) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+  }
   try {
     const data = updateProjectSchema.parse(req.body)
 
@@ -100,6 +121,22 @@ async function updateProject(req: NextApiRequest, res: NextApiResponse, projectI
 }
 
 async function deleteProject(req: NextApiRequest, res: NextApiResponse, projectId: string) {
+  // Phase 0: auth + admin-only RBAC. Deletion is destructive enough that
+  // we require system admin OR an explicit PROJECT_DELETE permission in the
+  // project's role configuration.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  if (!session.user.isSystemAdmin) {
+    const member = await prisma.member.findUnique({
+      where: { userId_projectId: { userId: session.user.id, projectId } },
+      include: { role: { select: { permissions: true } } },
+    })
+    if (!member || !member.role.permissions.includes('PROJECT_DELETE')) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+  }
   try {
     await prisma.project.delete({ where: { id: projectId } })
     return res.status(204).end()

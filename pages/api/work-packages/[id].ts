@@ -1,8 +1,16 @@
+// pages/api/work-packages/[id].ts
+// Phase 0 security fix: GET remains public-readable (project visibility is
+// enforced elsewhere), but PATCH/DELETE are now auth-gated. We use the
+// lightweight `getServerSession(req, res, authOptions)` 3-arg form inside
+// the mutation handlers — same pattern already used in 32 other API routes.
+// TODO Phase 1: migrate the whole file to withRoute HOF + rbac callback.
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { emitActivity, makeSubjectId } from '@/lib/activity'
+import { authOptions } from '@/lib/auth'
 
 const updateWorkPackageSchema = z.object({
   subject: z.string().min(1).max(255).optional(),
@@ -84,6 +92,29 @@ async function getWorkPackage(req: NextApiRequest, res: NextApiResponse, id: str
 }
 
 async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: string) {
+  // Phase 0: auth + RBAC. Reject anonymous edits outright.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  // RBAC: caller must be a project member (or system admin) of the WP's project.
+  const wp0 = await prisma.workPackage.findUnique({
+    where: { id },
+    select: { projectId: true },
+  })
+  if (!wp0) {
+    return res.status(404).json({ error: 'Work package not found' })
+  }
+  if (!session.user.isSystemAdmin) {
+    const member = await prisma.member.findUnique({
+      where: { userId_projectId: { userId: session.user.id, projectId: wp0.projectId } },
+      include: { role: { select: { permissions: true } } },
+    })
+    if (!member || !member.role.permissions.includes('WORK_PACKAGE_EDIT')) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+  }
+
   try {
     const data = updateWorkPackageSchema.parse(req.body)
 
@@ -165,8 +196,13 @@ async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
 }
 
 async function deleteWorkPackage(req: NextApiRequest, res: NextApiResponse, id: string) {
+  // Phase 0: auth + RBAC. Reject anonymous deletes outright.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
   try {
-    // Get work package for activity reference before deletion
+    // Get work package for activity reference + RBAC check
     const workPackage = await prisma.workPackage.findUnique({
       where: { id },
       select: { projectId: true, subject: true, authorId: true, project: { select: { name: true } } },
@@ -174,6 +210,16 @@ async function deleteWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
 
     if (!workPackage) {
       return res.status(404).json({ error: 'Work package not found' })
+    }
+
+    if (!session.user.isSystemAdmin) {
+      const member = await prisma.member.findUnique({
+        where: { userId_projectId: { userId: session.user.id, projectId: workPackage.projectId } },
+        include: { role: { select: { permissions: true } } },
+      })
+      if (!member || !member.role.permissions.includes('WORK_PACKAGE_DELETE')) {
+        return res.status(403).json({ error: 'Forbidden' })
+      }
     }
 
     await prisma.workPackage.delete({

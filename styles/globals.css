@@ -1,70 +1,498 @@
+/* =============================================================================
+ * OpenProject Rewrite — v2 Design System Tokens
+ * Spec: revamp-v2/design/01-uiux-design.md (sections 2–9)
+ * Tailwind v4 CSS-first config via @theme inline
+ * ============================================================================= */
+
 @import "tailwindcss";
 
+/* -----------------------------------------------------------------------------
+ * LIGHT MODE (default) — :root tokens
+ * Colors from §3.2–3.4 of the design spec. All hex values are exactly the
+ * values listed in the spec tables.
+ * -------------------------------------------------------------------------- */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ── Brand: Indigo (Light) ─────────────────────────────────────────────── */
+  --color-primary-50:  #EEF2FF;
+  --color-primary-100: #E0E7FF;
+  --color-primary-200: #C7D2FE;
+  --color-primary-300: #A5B4FC;
+  --color-primary-400: #818CF8;
+  --color-primary-500: #6366F1;
+  --color-primary-600: #4F46E5;
+  --color-primary-700: #4338CA;
+  --color-primary-800: #3730A3;
+  --color-primary-900: #312E81;
+  --color-primary-950: #1E1B4B;
+
+  /* ── Neutral: Slate (Light) ────────────────────────────────────────────── */
+  --color-slate-0:   #FFFFFF;
+  --color-slate-50:  #F8FAFC;
+  --color-slate-100: #F1F5F9;
+  --color-slate-200: #E2E8F0;
+  --color-slate-300: #CBD5E1;
+  --color-slate-400: #94A3B8;
+  --color-slate-500: #64748B;
+  --color-slate-600: #475569;
+  --color-slate-700: #334155;
+  --color-slate-800: #1E293B;
+  --color-slate-900: #0F172A;
+  --color-slate-950: #020617;
+
+  /* ── Semantic (Light) ─────────────────────────────────────────────────── */
+  --color-success-600: #16A34A;
+  --color-success-100: #DCFCE7;
+  --color-success-700: #15803D;
+
+  --color-warning-600: #D97706;
+  --color-warning-100: #FEF3C7;
+  --color-warning-700: #B45309;
+
+  --color-error-600:   #DC2626;
+  --color-error-100:   #FEE2E2;
+  --color-error-700:   #B91C1C;
+
+  --color-info-600:    #0284C7;
+  --color-info-100:    #E0F2FE;
+  --color-info-700:    #0369A1;
+
+  /* ── Surfaces (Light) ─────────────────────────────────────────────────── */
+  --color-surface-canvas:  #F8FAFC;
+  --color-surface-raised:  #FFFFFF;
+  --color-surface-sunken:  #F1F5F9;
+  --color-surface-overlay: rgba(15, 23, 42, 0.6);
+  --color-surface-sidebar: #FFFFFF;
+  --color-surface-topbar:  #FFFFFF;
+
+  /* ── Text (Light) ─────────────────────────────────────────────────────── */
+  --color-text-default:  #0F172A;
+  --color-text-muted:    #475569;
+  --color-text-subtle:   #64748B;
+  --color-text-onPrimary: #FFFFFF;
+  --color-text-onAccent:  #FFFFFF;
+  --color-text-link:     #4338CA;
+  --color-text-inverse:  #FFFFFF;
+
+  /* ── Borders (Light) ──────────────────────────────────────────────────── */
+  --color-border-subtle:  #E2E8F0;
+  --color-border-default: #CBD5E1;
+  --color-border-strong:  #94A3B8;
+  --color-border-focus:   #4F46E5;
+  --color-border-divider: #F1F5F9;
+  --color-border-ring:    #A5B4FC;
+
+  /* ── Status (work package + project) — Light ──────────────────────────── */
+  --color-status-new:            #64748B;
+  --color-status-new-bg:         #F1F5F9;
+  --color-status-in-progress:    #2563EB;
+  --color-status-in-progress-bg: #DBEAFE;
+  --color-status-in-review:      #9333EA;
+  --color-status-in-review-bg:   #F3E8FF;
+  --color-status-done:           #16A34A;
+  --color-status-done-bg:        #DCFCE7;
+  --color-status-closed:         #0F172A;
+  --color-status-closed-bg:      #E2E8F0;
+  --color-status-on-hold:        #D97706;
+  --color-status-on-hold-bg:     #FEF3C7;
+
+  /* ── Typography ───────────────────────────────────────────────────────── */
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, -apple-system,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo,
+    Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  /* ── Spacing (4px base) ───────────────────────────────────────────────── */
+  --space-0:  0;
+  --space-1:  0.25rem;  /*  4px */
+  --space-2:  0.5rem;   /*  8px */
+  --space-3:  0.75rem;  /* 12px */
+  --space-4:  1rem;     /* 16px */
+  --space-5:  1.25rem;  /* 20px */
+  --space-6:  1.5rem;   /* 24px */
+  --space-8:  2rem;     /* 32px */
+  --space-10: 2.5rem;   /* 40px */
+  --space-12: 3rem;     /* 48px */
+  --space-16: 4rem;     /* 64px */
+  --space-20: 5rem;     /* 80px */
+  --space-24: 6rem;     /* 96px */
+
+  /* ── Radius ───────────────────────────────────────────────────────────── */
+  --radius-none: 0;
+  --radius-sm:   0.25rem;  /*  4px */
+  --radius-md:   0.375rem; /*  6px */
+  --radius-lg:   0.5rem;   /*  8px */
+  --radius-xl:   0.75rem;  /* 12px */
+  --radius-2xl:  1rem;     /* 16px */
+  --radius-full: 9999px;
+
+  /* ── Shadows / Elevation ──────────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px 0 rgb(15 23 42 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(15 23 42 / 0.08), 0 1px 2px -1px rgb(15 23 42 / 0.04);
+  --shadow-md: 0 4px 6px -1px rgb(15 23 42 / 0.08), 0 2px 4px -2px rgb(15 23 42 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(15 23 42 / 0.08), 0 4px 6px -4px rgb(15 23 42 / 0.04);
+  --shadow-xl: 0 20px 25px -5px rgb(15 23 42 / 0.10), 0 8px 10px -6px rgb(15 23 42 / 0.04);
+  --shadow-focus: 0 0 0 3px rgb(79 70 229 / 0.35);
+
+  /* ── Motion ───────────────────────────────────────────────────────────── */
+  --duration-instant: 0ms;
+  --duration-fast:    150ms;
+  --duration-base:    200ms;
+  --duration-slow:    300ms;
+  --ease-out:   cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:    cubic-bezier(0.4, 0, 1, 1);
+  --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* ── Z-Index ──────────────────────────────────────────────────────────── */
+  --z-hide:     -1;
+  --z-base:     0;
+  --z-dropdown: 1000;
+  --z-sticky:   1100;
+  --z-topbar:   1200;
+  --z-overlay:  1300;
+  --z-modal:    1400;
+  --z-popover:  1500;
+  --z-tooltip:  1600;
+  --z-toast:    1700;
 }
 
+/* -----------------------------------------------------------------------------
+ * DARK MODE — `.dark` class on <html> (managed by ThemeProvider)
+ * Hex values mirrored from §3.2–3.4 of the design spec.
+ * -------------------------------------------------------------------------- */
+.dark {
+  /* ── Brand: Indigo (Dark) ─────────────────────────────────────────────── */
+  --color-primary-50:  #1E1B4B;
+  --color-primary-100: #312E81;
+  --color-primary-200: #3730A3;
+  --color-primary-300: #4338CA;
+  --color-primary-400: #4F46E5;
+  --color-primary-500: #6366F1;
+  --color-primary-600: #818CF8;
+  --color-primary-700: #A5B4FC;
+  --color-primary-800: #C7D2FE;
+  --color-primary-900: #E0E7FF;
+  --color-primary-950: #EEF2FF;
+
+  /* ── Neutral: Slate (Dark) ────────────────────────────────────────────── */
+  --color-slate-0:   #0B0F1A;
+  --color-slate-50:  #0F172A;
+  --color-slate-100: #1E293B;
+  --color-slate-200: #334155;
+  --color-slate-300: #475569;
+  --color-slate-400: #64748B;
+  --color-slate-500: #94A3B8;
+  --color-slate-600: #CBD5E1;
+  --color-slate-700: #E2E8F0;
+  --color-slate-800: #F1F5F9;
+  --color-slate-900: #F8FAFC;
+  --color-slate-950: #FFFFFF;
+
+  /* ── Semantic (Dark) ──────────────────────────────────────────────────── */
+  --color-success-600: #4ADE80;
+  --color-success-100: #052E16;
+  --color-success-700: #86EFAC;
+
+  --color-warning-600: #FBBF24;
+  --color-warning-100: #451A03;
+  --color-warning-700: #FCD34D;
+
+  --color-error-600:   #F87171;
+  --color-error-100:   #450A0A;
+  --color-error-700:   #FCA5A5;
+
+  --color-info-600:    #38BDF8;
+  --color-info-100:    #082F49;
+  --color-info-700:    #7DD3FC;
+
+  /* ── Surfaces (Dark) ──────────────────────────────────────────────────── */
+  --color-surface-canvas:  #020617;
+  --color-surface-raised:  #0F172A;
+  --color-surface-sunken:  #020617;
+  --color-surface-overlay: rgba(0, 0, 0, 0.7);
+  --color-surface-sidebar: #0F172A;
+  --color-surface-topbar:  #0F172A;
+
+  /* ── Text (Dark) ──────────────────────────────────────────────────────── */
+  --color-text-default:  #F8FAFC;
+  --color-text-muted:    #94A3B8;
+  --color-text-subtle:   #64748B;
+  --color-text-onPrimary: #FFFFFF;
+  --color-text-onAccent:  #0F172A;
+  --color-text-link:     #A5B4FC;
+  --color-text-inverse:  #0F172A;
+
+  /* ── Borders (Dark) ───────────────────────────────────────────────────── */
+  --color-border-subtle:  #1E293B;
+  --color-border-default: #334155;
+  --color-border-strong:  #475569;
+  --color-border-focus:   #818CF8;
+  --color-border-divider: #1E293B;
+  --color-border-ring:    #4338CA;
+
+  /* ── Status (Dark) ────────────────────────────────────────────────────── */
+  --color-status-new:            #94A3B8;
+  --color-status-new-bg:         #1E293B;
+  --color-status-in-progress:    #60A5FA;
+  --color-status-in-progress-bg: #172554;
+  --color-status-in-review:      #C084FC;
+  --color-status-in-review-bg:   #2E1065;
+  --color-status-done:           #4ADE80;
+  --color-status-done-bg:        #052E16;
+  --color-status-closed:         #F1F5F9;
+  --color-status-closed-bg:      #1E293B;
+  --color-status-on-hold:        #FBBF24;
+  --color-status-on-hold-bg:     #451A03;
+
+  /* ── Shadows (Dark — deeper) ──────────────────────────────────────────── */
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.4), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.4), 0 2px 4px -2px rgb(0 0 0 / 0.3);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.5), 0 4px 6px -4px rgb(0 0 0 / 0.3);
+  --shadow-xl: 0 20px 25px -5px rgb(0 0 0 / 0.6), 0 8px 10px -6px rgb(0 0 0 / 0.4);
+  --shadow-focus: 0 0 0 3px rgb(129 140 248 / 0.45);
+}
+
+/* -----------------------------------------------------------------------------
+ * Tailwind v4 @theme — exposes every :root token as a utility class.
+ * Reference: §15 of design spec.
+ * -------------------------------------------------------------------------- */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* Colors */
+  --color-primary:        var(--color-primary-600);
+  --color-primary-50:     var(--color-primary-50);
+  --color-primary-100:    var(--color-primary-100);
+  --color-primary-200:    var(--color-primary-200);
+  --color-primary-300:    var(--color-primary-300);
+  --color-primary-400:    var(--color-primary-400);
+  --color-primary-500:    var(--color-primary-500);
+  --color-primary-600:    var(--color-primary-600);
+  --color-primary-700:    var(--color-primary-700);
+  --color-primary-800:    var(--color-primary-800);
+  --color-primary-900:    var(--color-primary-900);
+  --color-primary-950:    var(--color-primary-950);
+
+  --color-slate-0:        var(--color-slate-0);
+  --color-slate-50:       var(--color-slate-50);
+  --color-slate-100:      var(--color-slate-100);
+  --color-slate-200:      var(--color-slate-200);
+  --color-slate-300:      var(--color-slate-300);
+  --color-slate-400:      var(--color-slate-400);
+  --color-slate-500:      var(--color-slate-500);
+  --color-slate-600:      var(--color-slate-600);
+  --color-slate-700:      var(--color-slate-700);
+  --color-slate-800:      var(--color-slate-800);
+  --color-slate-900:      var(--color-slate-900);
+  --color-slate-950:      var(--color-slate-950);
+
+  --color-secondary:      var(--color-slate-600);
+
+  --color-success:        var(--color-success-600);
+  --color-success-100:    var(--color-success-100);
+  --color-success-600:    var(--color-success-600);
+  --color-success-700:    var(--color-success-700);
+
+  --color-warning:        var(--color-warning-600);
+  --color-warning-100:    var(--color-warning-100);
+  --color-warning-600:    var(--color-warning-600);
+  --color-warning-700:    var(--color-warning-700);
+
+  --color-error:          var(--color-error-600);
+  --color-error-100:      var(--color-error-100);
+  --color-error-600:      var(--color-error-600);
+  --color-error-700:      var(--color-error-700);
+
+  --color-info:           var(--color-info-600);
+  --color-info-100:       var(--color-info-100);
+  --color-info-600:       var(--color-info-600);
+  --color-info-700:       var(--color-info-700);
+
+  /* Surfaces */
+  --color-canvas:         var(--color-surface-canvas);
+  --color-raised:         var(--color-surface-raised);
+  --color-sunken:         var(--color-surface-sunken);
+  --color-overlay:        var(--color-surface-overlay);
+  --color-sidebar:        var(--color-surface-sidebar);
+  --color-topbar:         var(--color-surface-topbar);
+
+  /* Text (semantic) */
+  --color-foreground:     var(--color-text-default);
+  --color-background:     var(--color-surface-canvas);
+  --color-text-default:   var(--color-text-default);
+  --color-text-muted:     var(--color-text-muted);
+  --color-text-subtle:    var(--color-text-subtle);
+  --color-text-onPrimary: var(--color-text-onPrimary);
+  --color-text-link:      var(--color-text-link);
+  --color-text-inverse:   var(--color-text-inverse);
+
+  /* Borders */
+  --color-border:         var(--color-border-default);
+  --color-border-subtle:  var(--color-border-subtle);
+  --color-border-default: var(--color-border-default);
+  --color-border-strong:  var(--color-border-strong);
+  --color-border-focus:   var(--color-border-focus);
+  --color-border-divider: var(--color-border-divider);
+  --color-border-ring:    var(--color-border-ring);
+
+  /* Status */
+  --color-status-new:            var(--color-status-new);
+  --color-status-new-bg:         var(--color-status-new-bg);
+  --color-status-in-progress:    var(--color-status-in-progress);
+  --color-status-in-progress-bg: var(--color-status-in-progress-bg);
+  --color-status-in-review:      var(--color-status-in-review);
+  --color-status-in-review-bg:   var(--color-status-in-review-bg);
+  --color-status-done:           var(--color-status-done);
+  --color-status-done-bg:        var(--color-status-done-bg);
+  --color-status-closed:         var(--color-status-closed);
+  --color-status-closed-bg:      var(--color-status-closed-bg);
+  --color-status-on-hold:        var(--color-status-on-hold);
+  --color-status-on-hold-bg:     var(--color-status-on-hold-bg);
+
+  /* Typography */
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  /* Radii */
+  --radius-none: var(--radius-none);
+  --radius-sm:   var(--radius-sm);
+  --radius-md:   var(--radius-md);
+  --radius-lg:   var(--radius-lg);
+  --radius-xl:   var(--radius-xl);
+  --radius-2xl:  var(--radius-2xl);
+  --radius-full: var(--radius-full);
+
+  /* Shadows */
+  --shadow-xs:    var(--shadow-xs);
+  --shadow-sm:    var(--shadow-sm);
+  --shadow-md:    var(--shadow-md);
+  --shadow-lg:    var(--shadow-lg);
+  --shadow-xl:    var(--shadow-xl);
+  --shadow-focus: var(--shadow-focus);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* -----------------------------------------------------------------------------
+ * Base element styles
+ * -------------------------------------------------------------------------- */
+html {
+  scroll-behavior: smooth;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--color-surface-canvas);
+  color: var(--color-text-default);
+  font-family: var(--font-sans);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* ─── Custom scrollbar ─────────────────────────────────────────────────────── */
+/* -----------------------------------------------------------------------------
+ * Custom utility classes (referenced by components)
+ * -------------------------------------------------------------------------- */
+@layer utilities {
+  /* Accessible focus ring using design system tokens */
+  .focus-ring {
+    outline: none;
+  }
+  .focus-ring:focus-visible {
+    outline: 2px solid var(--color-border-focus);
+    outline-offset: 2px;
+    box-shadow: var(--shadow-focus);
+  }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  /* Thin, themed scrollbar */
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-slate-300) transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  .scrollbar-thin::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-slate-300);
+    border-radius: 9999px;
+  }
+  .dark .scrollbar-thin {
+    scrollbar-color: var(--color-slate-700) transparent;
+  }
+  .dark .scrollbar-thin::-webkit-scrollbar-thumb {
+    background-color: var(--color-slate-700);
+  }
+
+  /* Hide scrollbar but keep scroll functionality */
+  .scrollbar-none {
+    scrollbar-width: none;
+  }
+  .scrollbar-none::-webkit-scrollbar {
+    display: none;
+  }
+
+  /* Text selection uses primary */
+  .text-select-primary ::selection,
+  .text-select-primary::selection {
+    background: var(--color-primary-100);
+    color: var(--color-primary-900);
+  }
 }
 
-/* ─── Text selection ───────────────────────────────────────────────────────── */
-
+/* -----------------------------------------------------------------------------
+ * Global pseudo-element styles
+ * -------------------------------------------------------------------------- */
 ::selection {
-  background: #bfdbfe;
-  color: #1e40af;
+  background: var(--color-primary-100);
+  color: var(--color-primary-900);
 }
-
-/* ─── Smooth scroll ─────────────────────────────────────────────────────────── */
-
-html {
-  scroll-behavior: smooth;
-}
-
-/* ─── Focus ring (applies to all interactive elements) ────────────────────── */
 
 :focus-visible {
-  outline: 2px solid #3b82f6;
+  outline: 2px solid var(--color-border-focus);
   outline-offset: 2px;
 }
 
-/* ─── Prose overflow ───────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface-canvas);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-slate-300);
+  border-radius: 9999px;
+  border: 2px solid var(--color-surface-canvas);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-slate-400);
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: var(--color-slate-700);
+  border-color: var(--color-surface-canvas);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: var(--color-slate-600);
+}
 
+/* -----------------------------------------------------------------------------
+ * Prose overflow guard
+ * -------------------------------------------------------------------------- */
 .prose {
   max-width: 100%;
   overflow-wrap: break-word;
+}
+
+/* -----------------------------------------------------------------------------
+ * Smooth theme transition (avoid abrupt swaps)
+ * -------------------------------------------------------------------------- */
+.theme-transition,
+.theme-transition *,
+.theme-transition *::before,
+.theme-transition *::after {
+  transition: background-color var(--duration-base) var(--ease-out),
+              border-color var(--duration-base) var(--ease-out),
+              color var(--duration-base) var(--ease-out),
+              fill var(--duration-base) var(--ease-out),
+              stroke var(--duration-base) var(--ease-out) !important;
 }

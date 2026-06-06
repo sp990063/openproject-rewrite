@@ -1,8 +1,14 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { prisma } from '@/lib/prisma'
+// pages/api/work-packages/reorder.ts
+// Phase 0 refactor: migrate to withRoute HOF — the previous implementation
+// had no session check at the route level and relied on
+// requireWorkPackagePermission() which itself uses the unreliable
+// 1-arg getServerSession() form. Now: route is auth-gated by withRoute
+// (session.user.id guaranteed), and the permission check uses the
+// session.user.id we already have in scope — no nested getServerSession call.
+import type { NextApiResponse } from 'next'
 import { z } from 'zod'
-import { checkRateLimit } from '@/lib/ratelimit'
-import { requireWorkPackagePermission } from '@/lib/permissions/work-packages'
+import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
 
 const reorderSchema = z.object({
   workPackageId: z.string().cuid(),
@@ -10,54 +16,61 @@ const reorderSchema = z.object({
   position: z.number().int().min(0),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    return res.status(405).json({ error: `Method ${req.method} not allowed` })
+/** Inline RBAC check: returns null if permitted, or an ApiError to throw. */
+async function assertWorkPackageEditPermission(
+  workPackageId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<void> {
+  if (isSystemAdmin) return
+  const wp = await prisma.workPackage.findUnique({
+    where: { id: workPackageId },
+    select: { projectId: true },
+  })
+  if (!wp) {
+    throw new ApiError(404, 'WORK_PACKAGE_NOT_FOUND', 'Work package not found')
   }
-
-  if (process.env.NODE_ENV !== 'test') {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
-    const success = await checkRateLimit(ip as string)
-    if (!success) {
-      return res.status(429).json({ error: 'Too many requests' })
-    }
+  const member = await prisma.member.findUnique({
+    where: {
+      userId_projectId: { userId, projectId: wp.projectId },
+    },
+    include: { role: { select: { permissions: true } } },
+  })
+  if (!member || !member.role.permissions.includes('WORK_PACKAGE_EDIT')) {
+    throw new ApiError(403, 'FORBIDDEN', 'Forbidden')
   }
+}
 
-  try {
-    const { workPackageId, targetStatusId, position: rawPosition } = reorderSchema.parse(req.body)
+export default withRoute<z.infer<typeof reorderSchema>, unknown, unknown>(
+  async ({ req, res, session, body }) => {
+    const { workPackageId, targetStatusId, position: rawPosition } = body
 
-    // Fetch current work package
+    await assertWorkPackageEditPermission(
+      workPackageId,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
+
     const wp = await prisma.workPackage.findUnique({
       where: { id: workPackageId },
       select: { id: true, projectId: true, statusId: true, position: true },
     })
-
     if (!wp) {
-      return res.status(404).json({ error: 'Work package not found', code: 'WORK_PACKAGE_NOT_FOUND' })
+      throw new ApiError(404, 'WORK_PACKAGE_NOT_FOUND', 'Work package not found')
     }
 
-    // Permission check
-    const permError = await requireWorkPackagePermission(workPackageId, 'WORK_PACKAGE_EDIT')
-    if (permError) {
-      return res.status(permError.status).json({ error: permError.code === 'FORBIDDEN' ? 'Forbidden' : 'Work package not found', code: permError.code })
-    }
-
-    // Verify target status exists in the project
     const targetStatus = await prisma.status.findUnique({
       where: { id: targetStatusId },
       select: { id: true },
     })
     if (!targetStatus) {
-      return res.status(404).json({ error: 'Status not found', code: 'STATUS_NOT_FOUND' })
+      throw new ApiError(404, 'STATUS_NOT_FOUND', 'Status not found')
     }
 
-    // Count work packages in target status column
     const columnCount = await prisma.workPackage.count({
       where: { projectId: wp.projectId, statusId: targetStatusId },
     })
 
-    // Clamp position to valid range
     const targetPosition = Math.max(0, Math.min(rawPosition, columnCount))
 
     // No-op: same status + same position
@@ -68,8 +81,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         select: { id: true, position: true },
       })
       return res.status(200).json({
-        workPackage: { id: wp.id, position: wp.position, statusId: wp.statusId },
-        column: { statusId: targetStatusId, workPackages: currentColumn },
+        success: true,
+        data: {
+          workPackage: { id: wp.id, position: wp.position, statusId: wp.statusId },
+          column: { statusId: targetStatusId, workPackages: currentColumn },
+        },
       })
     }
 
@@ -77,11 +93,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     const oldPosition = wp.position
     const isMovingToNewColumn = oldStatusId !== targetStatusId
 
-    // Perform reorder in a single transaction
     const result = await prisma.$transaction(async (tx) => {
       if (isMovingToNewColumn) {
-        // ── Moving to a different column ──────────────────────────────────
-        // Step 1: Shift DOWN the old column (items after old position shift -1)
         await tx.workPackage.updateMany({
           where: {
             projectId: wp.projectId,
@@ -90,8 +103,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           },
           data: { position: { decrement: 1 } },
         })
-
-        // Step 2: Shift UP the target column (items at or after target position shift +1)
         await tx.workPackage.updateMany({
           where: {
             projectId: wp.projectId,
@@ -101,9 +112,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           data: { position: { increment: 1 } },
         })
       } else {
-        // ── Moving within the same column ────────────────────────────────
         if (oldPosition > targetPosition) {
-          // Moving UP: shift intermediate items DOWN (+1) to make room
           await tx.workPackage.updateMany({
             where: {
               projectId: wp.projectId,
@@ -114,7 +123,6 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
             data: { position: { increment: 1 } },
           })
         } else {
-          // Moving DOWN: shift intermediate items UP (-1) to make room
           await tx.workPackage.updateMany({
             where: {
               projectId: wp.projectId,
@@ -127,14 +135,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         }
       }
 
-      // Step 3: Update the work package to its new status and position
       const updatedWp = await tx.workPackage.update({
         where: { id: workPackageId },
         data: { statusId: targetStatusId, position: targetPosition },
         select: { id: true, position: true, statusId: true },
       })
 
-      // Step 4: Fetch the full updated target column
       const column = await tx.workPackage.findMany({
         where: { projectId: wp.projectId, statusId: targetStatusId },
         orderBy: { position: 'asc' },
@@ -145,21 +151,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
 
     return res.status(200).json({
-      workPackage: {
-        id: result.updatedWp.id,
-        position: result.updatedWp.position,
-        statusId: result.updatedWp.statusId,
-      },
-      column: {
-        statusId: targetStatusId,
-        workPackages: result.column,
+      success: true,
+      data: {
+        workPackage: {
+          id: result.updatedWp.id,
+          position: result.updatedWp.position,
+          statusId: result.updatedWp.statusId,
+        },
+        column: {
+          statusId: targetStatusId,
+          workPackages: result.column,
+        },
       },
     })
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', code: 'INVALID_POSITION', details: error.issues })
-    }
-    console.error('Error reordering work package:', error)
-    return res.status(500).json({ error: 'Failed to reorder work package' })
+  },
+  {
+    methods: ['POST'],
+    bodySchema: reorderSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
+)

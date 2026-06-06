@@ -1,12 +1,12 @@
 import React from 'react'
 import { useSession } from 'next-auth/react'
-import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
+import { AppShell } from '@/components/shell'
 import { useProjects } from '@/hooks/use-projects'
 import { useWorkPackages } from '@/hooks/use-work-packages'
 import { Badge } from '@/components/ui'
 import Link from 'next/link'
 
-export default function DashboardPage() {
+function DashboardContent() {
   const { data: session } = useSession()
   const { projects } = useProjects()
   const { workPackages } = useWorkPackages()
@@ -15,8 +15,7 @@ export default function DashboardPage() {
   const recentWorkPackages = workPackages.data?.slice(0, 5) || []
 
   return (
-    <AuthenticatedLayout>
-      <div className="max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto">
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-gray-500 mt-1">
@@ -106,6 +105,13 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
-    </AuthenticatedLayout>
+  )
+}
+
+export default function DashboardPage() {
+  return (
+    <AppShell>
+      <DashboardContent />
+    </AppShell>
   )
 }
