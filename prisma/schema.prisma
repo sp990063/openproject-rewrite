@@ -27,33 +27,33 @@ model User {
   updatedAt                 DateTime @updatedAt
 
   // Relations
-  memberships         Member[]
-  groupMemberships    GroupMembership[]
-  assignedWPs         WorkPackage[]     @relation("Assignee")
-  authorWPs           WorkPackage[]     @relation("Author")
-  timeEntries         TimeEntry[]
-  approvedTimeEntries TimeEntry[]       @relation("TimeEntryApprover")
+  memberships              Member[]
+  groupMemberships         GroupMembership[]
+  assignedWPs              WorkPackage[]     @relation("Assignee")
+  authorWPs                WorkPackage[]     @relation("Author")
+  timeEntries              TimeEntry[]
+  approvedTimeEntries      TimeEntry[]       @relation("TimeEntryApprover")
   // Wiki relations
-  wikiPages           WikiPage[]
-  wikiVersions        WikiPageVersion[]
+  wikiPages                WikiPage[]
+  wikiVersions             WikiPageVersion[]
   // Forum relations
-  forums              Forum[]
-  forumThreads        ForumThread[]
-  forumPosts          ForumPost[]
-  forumVotes          ForumVote[]
+  forums                   Forum[]
+  forumThreads             ForumThread[]
+  forumPosts               ForumPost[]
+  forumVotes               ForumVote[]
   // Document relations
-  documents           Document[]
-  documentVersions    DocumentVersion[]
+  documents                Document[]
+  documentVersions         DocumentVersion[]
   // News relations (Phase 4)
-  newsItems           News[]
-  newsComments        NewsComment[]
+  newsItems                News[]
+  newsComments             NewsComment[]
   // Activity relations (Phase 4)
-  activities          Activity[]
+  activities               Activity[]
   activityCommentsReceived ActivityComment[] @relation("ActivityCommentAuthor")
   // Phase 5: Notification relations
-  meetings            Meeting[]
-  meetingAttendees    MeetingAttendee[]
-  meetingMinutes      MeetingMinutes[]
+  meetings                 Meeting[]
+  meetingAttendees         MeetingAttendee[]
+  meetingMinutes           MeetingMinutes[]
 
   // Phase 5: Notification relations
   notifications        Notification[]
@@ -74,7 +74,11 @@ model User {
   webAuthnCredentials WebAuthnCredential[]
 
   // API v3: Personal API key for OpenProject API compatibility
-  apiKey              String?
+  apiKey String?
+
+  // Phase 3: Invite Flow
+  invitesAccepted Invite[] @relation("InviteAcceptedBy")
+  invitesCreated  Invite[] @relation("InviteCreatedBy")
 
   @@map("users")
 }
@@ -116,6 +120,12 @@ model Project {
   // Phase 6: Git repositories
   repositories Repository[]
 
+  // Phase 3: Invite Flow
+  invites Invite[]
+
+  // Phase 3: Deletion audit log
+  deletionLogs ProjectDeletionLog[]
+
   // Phase 2: Budgets & Cost Tracking
   budgets Budget[]
 
@@ -152,6 +162,7 @@ model Role {
   permissions String[] // Stored as JSON string array; Phase 3 TypeScript casts to Permission[]
 
   members Member[]
+  invites Invite[]
 
   @@map("roles")
 }
@@ -341,30 +352,30 @@ model TimeEntry {
 // ============================================
 
 model Budget {
-  id          String      @id @default(cuid())
+  id          String       @id @default(cuid())
   projectId   String
   name        String
   description String?
-  amount      Float       @default(0)
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  amount      Float        @default(0)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   lines       BudgetLine[]
-  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("budgets")
 }
 
 model BudgetLine {
-  id            String      @id @default(cuid())
+  id            String       @id @default(cuid())
   budgetId      String
   description   String
-  unitCost      Float       @default(0)
-  quantity      Float       @default(1)
-  totalCost     Float       @default(0) // unitCost * quantity
+  unitCost      Float        @default(0)
+  quantity      Float        @default(1)
+  totalCost     Float        @default(0) // unitCost * quantity
   workPackageId String?
-  createdAt     DateTime    @default(now())
-  budget        Budget      @relation(fields: [budgetId], references: [id], onDelete: Cascade)
+  createdAt     DateTime     @default(now())
+  budget        Budget       @relation(fields: [budgetId], references: [id], onDelete: Cascade)
   workPackage   WorkPackage? @relation(fields: [workPackageId], references: [id])
 
   @@index([budgetId])
@@ -381,20 +392,20 @@ model Activity {
   projectId   String
   userId      String
   // Polymorphic reference
-  subjectType String   // "work_package" | "wiki_page" | "forum_post" | "forum_thread" | "document" | "meeting" | "news" | "time_entry" | "member" | "version"
-  subjectId   String   // e.g. "wp-123", "wiki-api-docs", "doc-456"
-  action      String   // "created" | "updated" | "deleted" | "commented" | "viewed"
-  details     Json?    // { field: "status", oldValue: "open", newValue: "closed" }
+  subjectType String // "work_package" | "wiki_page" | "forum_post" | "forum_thread" | "document" | "meeting" | "news" | "time_entry" | "member" | "version"
+  subjectId   String // e.g. "wp-123", "wiki-api-docs", "doc-456"
+  action      String // "created" | "updated" | "deleted" | "commented" | "viewed"
+  details     Json? // { field: "status", oldValue: "open", newValue: "closed" }
   // @mentions — for auto-creating notifications
   mentionIds  String[] @default([])
   // Human-readable reference for display
-  reference   Json     // { type: "WorkPackage", id: "...", subject: "Fix login bug" }
+  reference   Json // { type: "WorkPackage", id: "...", subject: "Fix login bug" }
   // Archive flag (after 2 years)
   isArchived  Boolean  @default(false)
   createdAt   DateTime @default(now())
 
-  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  user    User    @relation(fields: [userId], references: [id])
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user     User              @relation(fields: [userId], references: [id])
   comments ActivityComment[]
 
   @@index([projectId, createdAt])
@@ -412,7 +423,7 @@ model ActivityComment {
   createdAt  DateTime @default(now())
 
   activity Activity @relation(fields: [activityId], references: [id], onDelete: Cascade)
-  author User    @relation("ActivityCommentAuthor", fields: [userId], references: [id])
+  author   User     @relation("ActivityCommentAuthor", fields: [userId], references: [id])
 
   @@map("activity_comments")
 }
@@ -641,28 +652,28 @@ model NewsComment {
 // ============================================
 
 model Document {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   projectId   String
   title       String
   description String?
   folderId    String?
   authorId    String
   // File metadata
-  fileName    String   @default("")
-  fileSize    Int      @default(0)    // bytes
-  fileType    String   @default("")   // MIME type
-  fileUrl     String   @default("")  // storage URL (Phase 6: actual file URL)
+  fileName    String    @default("")
+  fileSize    Int       @default(0) // bytes
+  fileType    String    @default("") // MIME type
+  fileUrl     String    @default("") // storage URL (Phase 6: actual file URL)
   // Versioning
-  version     Int      @default(1)
+  version     Int       @default(1)
   // Soft delete (M2 FIX)
   deletedAt   DateTime?
   deletedBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
-  project Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  author  User            @relation(fields: [authorId], references: [id])
-  folder  DocumentFolder? @relation(fields: [folderId], references: [id])
+  project  Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  author   User              @relation(fields: [authorId], references: [id])
+  folder   DocumentFolder?   @relation(fields: [folderId], references: [id])
   versions DocumentVersion[]
 
   @@map("documents")
@@ -670,15 +681,15 @@ model Document {
 
 // DocumentVersion — each upload creates a new version
 model DocumentVersion {
-  id          String   @id @default(cuid())
-  documentId  String
-  version     Int
-  fileName    String
-  fileSize    Int      @default(0)
-  fileType    String   @default("")
-  fileUrl     String   @default("")
-  authorId    String
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  documentId String
+  version    Int
+  fileName   String
+  fileSize   Int      @default(0)
+  fileType   String   @default("")
+  fileUrl    String   @default("")
+  authorId   String
+  createdAt  DateTime @default(now())
 
   document Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
   author   User     @relation(fields: [authorId], references: [id])
@@ -952,7 +963,7 @@ enum SprintStatus {
 model CustomField {
   id             String   @id @default(cuid())
   name           String
-  fieldFormat    String   // 'string' | 'int' | 'float' | 'bool' | 'date' | 'list' | 'user' | 'version'
+  fieldFormat    String // 'string' | 'int' | 'float' | 'bool' | 'date' | 'list' | 'user' | 'version'
   possibleValues String[] @default([]) // for list type
   defaultValue   String?
   required       Boolean  @default(false)
@@ -960,7 +971,7 @@ model CustomField {
   filterable     Boolean  @default(false)
   editable       Boolean  @default(true)
   visible        Boolean  @default(true)
-  entityType     String   // 'WorkPackage' | 'Project' | 'User'
+  entityType     String // 'WorkPackage' | 'Project' | 'User'
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
@@ -983,14 +994,14 @@ model Setting {
 // ============================================
 
 model Repository {
-  id         String   @id @default(cuid())
-  projectId  String
-  type       String   @default("GIT") // GIT | SVN
-  name       String
-  url        String?
-  localPath  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id        String   @id @default(cuid())
+  projectId String
+  type      String   @default("GIT") // GIT | SVN
+  name      String
+  url       String?
+  localPath String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   project Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
   commits Commit[]
@@ -1009,8 +1020,8 @@ model Commit {
   committedAt  DateTime
   createdAt    DateTime @default(now())
 
-  repository     Repository          @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
-  workPackages  CommitWorkPackage[]
+  repository   Repository          @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  workPackages CommitWorkPackage[]
 
   @@index([repositoryId])
   @@index([sha])
@@ -1018,11 +1029,11 @@ model Commit {
 }
 
 model CommitWorkPackage {
-  commitId       String
-  workPackageId  String
+  commitId      String
+  workPackageId String
 
-  commit        Commit      @relation(fields: [commitId], references: [id], onDelete: Cascade)
-  workPackage   WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
+  commit      Commit      @relation(fields: [commitId], references: [id], onDelete: Cascade)
+  workPackage WorkPackage @relation(fields: [workPackageId], references: [id], onDelete: Cascade)
 
   @@id([commitId, workPackageId])
   @@map("commit_work_packages")
@@ -1033,30 +1044,30 @@ model CommitWorkPackage {
 // ============================================
 
 model Webhook {
-  id        String   @id @default(cuid())
-  projectId String?  // null = system-wide
-  url       String
-  secret    String?  // HMAC secret
-  events    String[] // ['work_package.created', 'work_package.updated', 'project.member_added']
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String            @id @default(cuid())
+  projectId  String? // null = system-wide
+  url        String
+  secret     String? // HMAC secret
+  events     String[] // ['work_package.created', 'work_package.updated', 'project.member_added']
+  active     Boolean           @default(true)
+  createdAt  DateTime          @default(now())
+  updatedAt  DateTime          @updatedAt
   deliveries WebhookDelivery[]
-  project   Project? @relation(fields: [projectId], references: [id])
+  project    Project?          @relation(fields: [projectId], references: [id])
 }
 
 model WebhookDelivery {
-  id          String   @id @default(cuid())
-  webhookId   String
-  event       String
-  payload     String   // JSON string
-  status      String   // 'pending' | 'success' | 'failed'
+  id           String    @id @default(cuid())
+  webhookId    String
+  event        String
+  payload      String // JSON string
+  status       String // 'pending' | 'success' | 'failed'
   responseCode Int?
   responseBody String?
-  attempts    Int      @default(0)
-  nextRetry   DateTime?
-  createdAt  DateTime @default(now())
-  webhook    Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  attempts     Int       @default(0)
+  nextRetry    DateTime?
+  createdAt    DateTime  @default(now())
+  webhook      Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
 }
 
 // ============================================
@@ -1064,14 +1075,14 @@ model WebhookDelivery {
 // ============================================
 
 model Announcement {
-  id         String    @id @default(cuid())
-  content    String    // markdown supported
-  type       String    @default("info") // info | warning | success | error
-  dismissible Boolean  @default(true)
-  startsAt   DateTime?
-  endsAt     DateTime?
-  createdAt  DateTime  @default(now())
-  updatedAt  DateTime  @updatedAt
+  id          String    @id @default(cuid())
+  content     String // markdown supported
+  type        String    @default("info") // info | warning | success | error
+  dismissible Boolean   @default(true)
+  startsAt    DateTime?
+  endsAt      DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 // ============================================
@@ -1079,22 +1090,22 @@ model Announcement {
 // ============================================
 
 model Group {
-  id        String   @id @default(cuid())
-  name      String   @unique
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id        String            @id @default(cuid())
+  name      String            @unique
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
   members   GroupMembership[]
 
   @@map("groups")
 }
 
 model GroupMembership {
-  id        String   @id @default(cuid())
-  groupId   String
-  userId    String
-  addedAt   DateTime @default(now())
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id      String   @id @default(cuid())
+  groupId String
+  userId  String
+  addedAt DateTime @default(now())
+  group   Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
   @@map("group_memberships")
@@ -1105,11 +1116,55 @@ model GroupMembership {
 // ============================================
 
 model Branding {
-  id             String  @id @default("default") // singleton
-  logoUrl        String?
-  faviconUrl     String?
-  primaryColor   String  @default("#1E40AF") // brand blue
-  updatedAt      DateTime @updatedAt
+  id           String   @id @default("default") // singleton
+  logoUrl      String?
+  faviconUrl   String?
+  primaryColor String   @default("#1E40AF") // brand blue
+  updatedAt    DateTime @updatedAt
 
   @@map("branding")
+}
+
+// ============================================
+// PHASE 3: INVITE FLOW
+// ============================================
+
+model Invite {
+  id         String    @id @default(cuid())
+  email      String
+  projectId  String
+  roleId     String
+  token      String    @unique
+  expiresAt  DateTime
+  acceptedAt DateTime?
+  userId     String? // Set when accepted
+  invitedBy  String
+  createdAt  DateTime  @default(now())
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user    User?   @relation("InviteAcceptedBy", fields: [userId], references: [id])
+  inviter User    @relation("InviteCreatedBy", fields: [invitedBy], references: [id])
+  role    Role    @relation(fields: [roleId], references: [id])
+
+  @@index([projectId, acceptedAt])
+  @@index([email])
+  @@index([expiresAt])
+  @@map("invites")
+}
+
+// D5 FIX: Tracks archive + delete actions for compliance / undo window
+model ProjectDeletionLog {
+  id          String   @id @default(cuid())
+  projectId   String? // Optional so log survives project hard-delete (SetNull)
+  projectName String // Snapshot — survives even when project is hard-deleted
+  action      String // 'ARCHIVE' | 'DELETE' | 'HARD_DELETE'
+  performedBy String
+  reason      String?
+  performedAt DateTime @default(now())
+
+  project Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  @@index([projectId])
+  @@index([performedBy])
+  @@map("project_deletion_logs")
 }

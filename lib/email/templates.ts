@@ -30,6 +30,14 @@ interface MeetingInvitationData extends BaseTemplateData {
   organizerName: string;
 }
 
+export interface ProjectInvitationData extends BaseTemplateData {
+  invitedByName: string;
+  projectName: string;
+  roleName?: string;
+  acceptUrl: string;
+  expiresAt: string; // Human-readable, e.g. "June 13, 2026"
+}
+
 function baseTemplate(content: string, footer?: string) {
   return `
 <!DOCTYPE html>
@@ -119,6 +127,20 @@ export function getPasswordResetTemplate(resetUrl: string, userName: string) {
     <p><a href="${resetUrl}" class="button">Reset Password</a></p>
     <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">
       This link expires in 1 hour. If you didn't request a password reset, please ignore this email.
+    </p>
+  `;
+  return baseTemplate(content);
+}
+
+export function getProjectInvitationTemplate(data: ProjectInvitationData) {
+  const content = `
+    <p>Hello,</p>
+    <p>${data.invitedByName} has invited you to join the project
+    <strong>${data.projectName}</strong>${data.roleName ? ` as a <strong>${data.roleName}</strong>` : ''}.</p>
+    <p>This invitation expires on ${data.expiresAt}.</p>
+    <p><a href="${data.acceptUrl}" class="button">Accept Invitation</a></p>
+    <p style="color: #6b7280; font-size: 13px; margin-top: 24px;">
+      If you don't have an account yet, you'll be asked to create one when you accept.
     </p>
   `;
   return baseTemplate(content);
