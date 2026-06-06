@@ -22,13 +22,15 @@ interface WikiVersionsResponse {
 async function fetchWikiPage(projectId: string, slug: string): Promise<WikiPageResponse> {
   const res = await fetch(`/api/projects/${projectId}/wiki/${slug}`)
   if (!res.ok) throw new Error('Failed to fetch wiki page')
-  return res.json()
+  const json = await res.json()
+  return json.data
 }
 
 async function fetchWikiVersions(projectId: string, slug: string): Promise<WikiVersionsResponse> {
   const res = await fetch(`/api/projects/${projectId}/wiki/${slug}/versions`)
   if (!res.ok) throw new Error('Failed to fetch wiki versions')
-  return res.json()
+  const json = await res.json()
+  return { versions: json.data ?? [] }
 }
 
 export function useWikiPage(projectId: string | undefined, slug: string | undefined) {

@@ -1,52 +1,68 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+// pages/api/projects/[projectId]/wiki/[slug]/versions/index.ts
+//
+// List version history for a wiki page (spec §2.4, §2.7)
+//
+//   GET /api/projects/[projectId]/wiki/[slug]/versions
+//
+// Returns a chronologically ordered list (newest first) of all
+// WikiPageVersion rows for the page, with author info. The `content`
+// field is NOT included in the list response (use the per-version
+// endpoint to fetch a specific version's full content).
+import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { requireProjectPermission } from '@/lib/permissions/check'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user?.id) {
-    return res.status(401).json({ error: 'UNAUTHORIZED', message: 'Not authenticated' })
-  }
+export default withRoute<unknown, unknown, { projectId: string; slug: string }>(
+  async ({ req, res, session, params }) => {
+    const { projectId, slug } = params
+    if (!projectId || !slug) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Project ID and slug are required')
+    }
 
-  const rawProjectId = req.query['projectId']
-  const rawSlug = req.query['slug']
-  const projectId = typeof rawProjectId === 'string' ? rawProjectId : String(rawProjectId ?? '')
-  const slug = typeof rawSlug === 'string' ? rawSlug : String(rawSlug ?? '')
+    if (req.method !== 'GET') {
+      return undefined
+    }
 
-  if (!projectId || !slug) {
-    return res.status(400).json({ error: 'INVALID_PARAMS', message: 'Invalid parameters' })
-  }
-
-  // GET /api/projects/[projectId]/wiki/[slug]/versions — list all versions for a wiki page
-  if (req.method === 'GET') {
-    // First check if the wiki page exists
     const page = await prisma.wikiPage.findUnique({
       where: { projectId_slug: { projectId, slug } },
-      select: { id: true, title: true },
+      select: { id: true },
     })
-
     if (!page) {
-      return res.status(404).json({ error: 'NOT_FOUND', message: 'Wiki page not found' })
+      throw new ApiError(404, 'PAGE_NOT_FOUND', 'Wiki page not found')
+    }
+
+    const denied = await requireProjectPermission(
+      projectId,
+      'wiki.view',
+      session,
+    )
+    if (denied) {
+      throw new ApiError(denied.status, denied.code, 'Cannot view wiki page')
     }
 
     const versions = await prisma.wikiPageVersion.findMany({
       where: { wikiPageId: page.id },
       orderBy: { version: 'desc' },
-      include: {
-        author: {
-          select: { id: true, name: true, avatarUrl: true },
-        },
+      select: {
+        id: true,
+        version: true,
+        createdAt: true,
+        author: { select: { id: true, name: true, email: true, avatarUrl: true } },
       },
     })
 
-    return res.json({
-      wikiPageId: page.id,
-      wikiPageTitle: page.title,
-      versions,
+    return res.status(200).json({
+      success: true,
+      data: {
+        wikiPageId: page.id,
+        wikiPageTitle: page.title,
+        versions,
+      },
     })
-  }
-
-  res.setHeader('Allow', ['GET'])
-  return res.status(405).json({ error: 'METHOD_NOT_ALLOWED', message: 'Method not allowed' })
-}
+  },
+  {
+    methods: ['GET'],
+    skipSentryFor: (err) => err instanceof z.ZodError,
+  },
+)

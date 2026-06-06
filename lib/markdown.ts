@@ -1,22 +1,30 @@
 /**
- * Markdown rendering with XSS sanitization — P2-1 CRITICAL security fix
+ * XSS-safe Markdown rendering pipeline.
  *
- * All user-provided Markdown must be sanitized before rendering as HTML.
- * NEVER render raw Markdown without going through this pipeline.
+ * Two-stage sanitization:
+ *  1. unified + remark-parse + remark-gfm + remark-rehype → raw HTML from MD
+ *  2. DOMPurify (isomorphic — same API on server + client) → safe HTML
+ *
+ * Spec reference: openproject-rewrite-phase4-spec.md §2.0
+ * Critical security: NEVER use `dangerouslySetInnerHTML` with unsanitized
+ * content. ALL wiki Markdown MUST go through `renderMarkdown()`.
+ *
+ * Usage:
+ *   const html = await renderMarkdown(markdownSource)
+ *   return <div dangerouslySetInnerHTML={{ __html: html }} />
  */
-import { unified } from 'unified';
-import remarkParse from 'remark-parse';
-import remarkGfm from 'remark-gfm';
-import remarkRehype from 'remark-rehype';
-import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
-import rehypeStringify from 'rehype-stringify';
-import { visit } from 'unist-util-visit';
-import type { Node } from 'unist';
-import type { Element } from 'hast';
-import DOMPurify from 'isomorphic-dompurify';
-import { processMacros } from '@/lib/wiki/macros';
+import { unified } from 'unified'
+import remarkParse from 'remark-parse'
+import remarkGfm from 'remark-gfm'
+import remarkRehype from 'remark-rehype'
+import rehypeStringify from 'rehype-stringify'
+import DOMPurify from 'isomorphic-dompurify'
 
-const ALLOWED_TAGS = [
+/**
+ * ALLOWED_TAGS — the safe subset of HTML for wiki content.
+ * No <script>, no <iframe>, no <style>, no <object>, no event handlers.
+ */
+const ALLOWED_TAGS: string[] = [
   'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'p', 'br', 'hr',
   'ul', 'ol', 'li',
@@ -25,104 +33,56 @@ const ALLOWED_TAGS = [
   'img', 'figure', 'figcaption',
   'table', 'thead', 'tbody', 'tr', 'th', 'td',
   'div', 'span',
-];
-
-const ALLOWED_ATTR = ['href', 'src', 'alt', 'title', 'className', 'target', 'rel', 'data-page', 'data-project', 'data-parent-page', 'id'];
+]
 
 /**
- * Rehype plugin: inject id attributes into heading elements.
- * Generates slugs from heading text content.
+ * ALLOWED_ATTR — restricted to safe presentation + link attributes.
+ * No `on*` event attrs, no `style` (CSS injection), no `id` (DOM collision).
  */
-function rehypeHeadingIds() {
-  return (tree: Node) => {
-    visit(tree, 'element', (node: Element) => {
-      if (node.tagName.match(/^h[1-6]$/)) {
-        const textContent = (node.children || [])
-          .filter((child): child is Element => child.type === 'element')
-          .map(child => {
-            if (child.tagName === 'code') {
-              return (child.children || []).map((c: Element) => c.value || '').join('')
-            }
-            return (child.children || []).map((c: Element) => c.value || '').join('')
-          })
-          .join('')
-
-        const slug = textContent
-          .toLowerCase()
-          .replace(/<[^>]+>/g, '') // strip any remaining HTML tags
-          .replace(/[^a-z0-9]+/g, '-')
-          .replace(/(^-|-$)/g, '')
-
-        // Add id to properties
-        node.properties = node.properties || {}
-        node.properties['id'] = slug
-      }
-    })
-  }
-}
+const ALLOWED_ATTR: string[] = [
+  'href', 'src', 'alt', 'title',
+  'class', 'className', 'target', 'rel',
+]
 
 /**
- * Render Markdown string to sanitized HTML.
- * Safe to use with user-provided content.
+ * Render Markdown source to safe HTML.
+ *
+ * @param content - Raw Markdown source (user input)
+ * @returns Sanitized HTML safe for `dangerouslySetInnerHTML`
  */
 export async function renderMarkdown(content: string): Promise<string> {
-  // Step 0: Process wiki macros first
-  const contentWithMacros = processMacros(content);
-
-  // Step 1: Markdown → HTML with GFM support + heading IDs
+  // Stage 1: parse Markdown → HTML
   const vfile = await unified()
     .use(remarkParse)
     .use(remarkGfm)
     .use(remarkRehype)
-    .use(rehypeHeadingIds)
-    .process(contentWithMacros);
+    .use(rehypeStringify)
+    .process(content)
 
-  // Step 2: Sanitize HTML — prevents XSS attacks
-  const cleanHtml = DOMPurify.sanitize(String(vfile), {
+  const rawHtml = String(vfile)
+
+  // Stage 2: sanitize HTML (XSS prevention)
+  const cleanHtml = DOMPurify.sanitize(rawHtml, {
     ALLOWED_TAGS,
     ALLOWED_ATTR,
-    // Force all links to open in new tab and add noopener
-    ADD_ATTR: ['target'],
-    FORCE_BODY: false,
-    // Prevent DOM clobbering
-    ALLOW_DATA_ATTR: false,
-  });
+    // Disallow data: and javascript: URI schemes
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+  })
 
-  return cleanHtml;
+  return cleanHtml
 }
 
 /**
- * Generate a table of contents from Markdown content.
- * Extracts headings (h1-h6) and returns them with their slug anchors.
+ * Render Markdown synchronously on the client. Use only for preview where
+ * the source is already known-safe (e.g. previewing a form field, not
+ * rendering server-trusted content).
+ *
+ * Server-side rendering should always use `renderMarkdown` (async).
  */
-export function generateTableOfContents(content: string): Array<{
-  level: number;
-  text: string;
-  slug: string;
-}> {
-  const headingRegex = /^(#{1,6})\s+(.+)$/gm;
-  const toc: Array<{ level: number; text: string; slug: string }> = [];
-  let match;
-
-  while ((match = headingRegex.exec(content)) !== null) {
-    const level = match[1].length;
-    const text = match[2].trim();
-    const slug = text
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
-    toc.push({ level, text, slug });
-  }
-
-  return toc;
-}
-
-/**
- * Generate a URL-safe slug from a string.
- */
-export function generateSlug(title: string): string {
-  return title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
+export function renderMarkdownSync(content: string): string {
+  return DOMPurify.sanitize(content, {
+    ALLOWED_TAGS,
+    ALLOWED_ATTR,
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|mailto|tel):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+  })
 }

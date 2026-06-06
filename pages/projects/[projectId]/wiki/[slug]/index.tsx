@@ -75,11 +75,10 @@ export default function WikiPageViewPage() {
 
     try {
       await updateWikiPage.mutateAsync({
-        id: wikiPage.id,
-        data: {
-          title: editTitle !== wikiPage.title ? editTitle : undefined,
-          content: editContent,
-        },
+        projectId: projectId as string,
+        slug: slug as string,
+        title: editTitle !== wikiPage.title ? editTitle : undefined,
+        content: editContent,
       })
       setIsEditing(false)
     } catch (err) {
@@ -91,7 +90,10 @@ export default function WikiPageViewPage() {
     if (!wikiPage) return
 
     try {
-      await deleteWikiPage.mutateAsync(wikiPage.id)
+      await deleteWikiPage.mutateAsync({
+        projectId: projectId as string,
+        slug: slug as string,
+      })
       router.push(`/projects/${projectId}/wiki`)
     } catch (err) {
       console.error('Failed to delete wiki page:', err)

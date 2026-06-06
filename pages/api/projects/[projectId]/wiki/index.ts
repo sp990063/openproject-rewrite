@@ -1,76 +1,150 @@
-import { NextApiRequest, NextApiResponse } from 'next';
-import { z } from 'zod';
-import { prisma } from '@/lib/prisma';
-import { generateSlug } from '@/lib/markdown';
+// pages/api/projects/[projectId]/wiki/index.ts
+//
+// Wiki list + create (spec §2.4, §2.5)
+//
+//   GET  /api/projects/[projectId]/wiki        — list all wiki pages (requires wiki.view)
+//   POST /api/projects/[projectId]/wiki        — create a new wiki page (requires wiki.edit)
+//
+// List returns pages ordered by `updatedAt DESC` (most recently edited
+// first), with author name + version count. No body content (use
+// `/wiki/[slug]` to fetch a single page).
+//
+// Create: caller provides { title, content, parentId? }. Slug is auto-
+// generated from title and uniquified within the project. On collision,
+// appends "-2", "-3", etc. The initial version (1) is recorded as a
+// WikiPageVersion on the same transaction.
+import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { requireProjectPermission } from '@/lib/permissions/check'
+import { generateSlug, uniqueSlug } from '@/lib/slug'
 
-const CreateWikiPageSchema = z.object({
+const createPageSchema = z.object({
   title: z.string().min(1).max(255),
-  content: z.string().default(''),
-  parentId: z.string().optional(),
-});
+  content: z.string(),
+  parentId: z.string().nullable().optional(),
+})
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { id } = req.query;
-  if (!id || typeof id !== 'string') {
-    return res.status(400).json({ error: 'Invalid project ID' });
-  }
+const WIKI_INCLUDE = {
+  author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+  parent: { select: { id: true, title: true, slug: true } },
+  children: { select: { id: true, title: true, slug: true } },
+  _count: { select: { versions: true } },
+} as const
 
-  if (req.method === 'GET') {
-    const pages = await prisma.wikiPage.findMany({
-      where: { projectId: id, parentId: null },
-      include: {
-        author: { select: { id: true, name: true } },
-        children: { select: { id: true, title: true, slug: true } },
-      },
-      orderBy: { title: 'asc' },
-    });
+export default withRoute<
+  z.infer<typeof createPageSchema>,
+  unknown,
+  { projectId: string }
+>(
+  async ({ req, res, session, body, params }) => {
+    const { projectId } = params
+    if (!projectId) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Project ID is required')
+    }
 
-    const pagesWithCount = await Promise.all(
-      pages.map(async (page) => {
-        const versionCount = await prisma.wikiPageVersion.count({
-          where: { wikiPageId: page.id },
-        });
-        return { ...page, versionCount };
+    // GET — list wiki pages
+    if (req.method === 'GET') {
+      const denied = await requireProjectPermission(
+        projectId,
+        'wiki.view',
+        session,
+      )
+      if (denied) {
+        throw new ApiError(denied.status, denied.code, 'Cannot view wiki')
+      }
+
+      const pages = await prisma.wikiPage.findMany({
+        where: { projectId },
+        orderBy: { updatedAt: 'desc' },
+        include: WIKI_INCLUDE,
       })
-    );
 
-    return res.json(pagesWithCount);
-  }
-
-  if (req.method === 'POST') {
-    const parsed = CreateWikiPageSchema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(400).json({ error: 'Validation error', details: parsed.error.flatten() });
+      // Flatten `_count.versions` into a top-level `versionCount` for
+      // consumer compat with the pre-existing `WikiPageWithMeta` type.
+      const data = pages.map(({ _count, ...rest }) => ({
+        ...rest,
+        versionCount: _count.versions,
+      }))
+      return res.status(200).json({ success: true, data })
     }
 
-    const slug = generateSlug(parsed.data.title);
+    // POST — create a new page
+    if (req.method === 'POST') {
+      const denied = await requireProjectPermission(
+        projectId,
+        'wiki.edit',
+        session,
+      )
+      if (denied) {
+        throw new ApiError(
+          denied.status,
+          denied.code,
+          'Insufficient permission to create wiki page',
+        )
+      }
 
-    // Check slug uniqueness within project
-    const existing = await prisma.wikiPage.findUnique({
-      where: { projectId_slug: { projectId: id, slug } },
-    });
+      const { title, content, parentId } = body
 
-    if (existing) {
-      return res.status(409).json({ error: 'A wiki page with this title already exists' });
+      // Verify parent exists and belongs to the same project
+      if (parentId) {
+        const parent = await prisma.wikiPage.findUnique({
+          where: { id: parentId },
+          select: { projectId: true },
+        })
+        if (!parent || parent.projectId !== projectId) {
+          throw new ApiError(
+            400,
+            'INVALID_PARENT',
+            'Parent page does not exist in this project',
+          )
+        }
+      }
+
+      // Generate a unique slug
+      const baseSlug = generateSlug(title)
+      const existing = await prisma.wikiPage.findMany({
+        where: { projectId },
+        select: { slug: true },
+      })
+      const slug = uniqueSlug(
+        baseSlug,
+        existing.map((p) => p.slug),
+      )
+
+      // Create page + initial version atomically
+      const page = await prisma.$transaction(async (tx) => {
+        const created = await tx.wikiPage.create({
+          data: {
+            projectId,
+            title,
+            slug,
+            content,
+            parentId: parentId ?? null,
+            authorId: session.user.id,
+            version: 1,
+          },
+          include: WIKI_INCLUDE,
+        })
+        await tx.wikiPageVersion.create({
+          data: {
+            wikiPageId: created.id,
+            content,
+            authorId: session.user.id,
+            version: 1,
+          },
+        })
+        return created
+      })
+
+      return res.status(201).json({ success: true, data: page })
     }
 
-    const page = await prisma.wikiPage.create({
-      data: {
-        projectId: id,
-        title: parsed.data.title,
-        slug,
-        content: parsed.data.content,
-        parentId: parsed.data.parentId ?? null,
-        authorId: session.user.id,
-      },
-      include: {
-        author: { select: { id: true, name: true } },
-      },
-    });
-
-    return res.status(201).json(page);
-  }
-
-  res.setHeader('Allow', ['GET', 'POST']);
-  return res.status(405).json({ error: 'Method not allowed' });
-}
+    return undefined
+  },
+  {
+    methods: ['GET', 'POST'],
+    bodySchema: createPageSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
+  },
+)

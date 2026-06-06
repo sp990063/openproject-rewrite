@@ -33,8 +33,8 @@ interface WikiVersionResponse {
 async function fetchWikiVersion(projectId: string, slug: string, version: number): Promise<WikiVersionWithAuthor> {
   const res = await fetch(`/api/projects/${projectId}/wiki/${slug}/versions/${version}`)
   if (!res.ok) throw new Error('Failed to fetch wiki version')
-  const data: WikiVersionResponse = await res.json()
-  return data.version
+  const json = await res.json()
+  return json.data
 }
 
 export function useWikiVersion(projectId: string | undefined, slug: string | undefined, version: number | undefined) {

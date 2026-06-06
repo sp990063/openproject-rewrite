@@ -11,9 +11,10 @@ interface WikiPagesResponse extends Omit<WikiPage, 'children' | 'parent' | 'auth
 }
 
 async function fetchWikiPages(projectId: string): Promise<WikiPagesResponse[]> {
-  const res = await fetch(`/api/wiki?projectId=${projectId}`)
+  const res = await fetch(`/api/projects/${projectId}/wiki`)
   if (!res.ok) throw new Error('Failed to fetch wiki pages')
-  return res.json()
+  const json = await res.json()
+  return json.data ?? []
 }
 
 export function useWikiPages(projectId: string | undefined) {
