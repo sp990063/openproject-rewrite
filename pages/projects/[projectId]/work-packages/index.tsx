@@ -7,10 +7,25 @@ import { AuthenticatedLayout } from '@/components/layout/AuthenticatedLayout'
 import { Button, Modal, Input } from '@/components/ui'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/Tabs'
 import { useCreateWorkPackage } from '@/hooks/use-work-packages'
+// P1-E: dynamic-import the 3 secondary views so they only join the bundle
+// when the user actually switches to Gantt/Board/Calendar. The default
+// `table` view stays statically imported.
+// NOTE: we use an aliased import to avoid clashing with the
+// `export const dynamic = 'force-dynamic'` declaration on line 1.
+import nextDynamic from 'next/dynamic'
 import { WorkPackageTable } from '@/components/work-packages/table'
-import { GanttChart } from '@/components/work-packages/gantt'
-import { WorkPackageBoard } from '@/components/work-packages/board'
-import { WorkPackageCalendar } from '@/components/work-packages/calendar'
+const GanttChart = nextDynamic(
+  () => import('@/components/work-packages/gantt').then((m) => m.GanttChart),
+  { ssr: false, loading: () => <div className="p-8 text-text-muted">Loading Gantt…</div> }
+)
+const WorkPackageBoard = nextDynamic(
+  () => import('@/components/work-packages/board').then((m) => m.WorkPackageBoard),
+  { ssr: false, loading: () => <div className="p-8 text-text-muted">Loading Board…</div> }
+)
+const WorkPackageCalendar = nextDynamic(
+  () => import('@/components/work-packages/calendar').then((m) => m.WorkPackageCalendar),
+  { ssr: false, loading: () => <div className="p-8 text-text-muted">Loading Calendar…</div> }
+)
 import { QuerySwitcher } from '@/components/work-packages/query/QuerySwitcher'
 import { SaveQueryDialog } from '@/components/work-packages/query/SaveQueryDialog'
 import { ExportDialog } from '@/components/exports/ExportDialog'

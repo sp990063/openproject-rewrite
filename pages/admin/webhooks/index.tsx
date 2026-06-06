@@ -6,6 +6,10 @@ export const dynamic = 'force-dynamic'
 import React, { useState } from 'react'
 import Head from 'next/head'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useForm, Controller } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
+import { z } from 'zod'
+import { FormField, FormSection, FormError } from '@/components/forms'
 import { WEBHOOK_EVENTS, WEBHOOK_EVENT_DESCRIPTIONS } from '@/lib/webhooks/event-types'
 
 interface Webhook {
@@ -27,15 +31,76 @@ interface CreateWebhookRequest {
   active?: boolean
 }
 
+/**
+ * Zod schema (single source of truth for types + validation).
+ *
+ * - `name` is the human-readable label of the webhook; required, 1-120 chars.
+ * - `url` must be a valid absolute URL.
+ * - `events` must be a non-empty array of strings.
+ * - `secret` is optional ('' is treated as "not set" and dropped from the
+ *   payload, matching the previous behaviour).
+ * - `active` defaults to true (matches the prior `formData.active: true`).
+ *
+ * The schema's input and output types are kept identical (no `.transform()`,
+ * no divergent `.optional()`/`.default()`) so RHF's `Control<T, _, T>` variance
+ * is preserved — same approach used in `pages/admin/announcements/index.tsx`
+ * and `components/meetings/MeetingForm.tsx`.
+ */
+const createWebhookSchema = z.object({
+  name: z
+    .string()
+    .min(1, 'Name is required')
+    .max(120, 'Name must be 120 characters or fewer'),
+  url: z
+    .string()
+    .min(1, 'Webhook URL is required')
+    .url('Enter a valid URL (e.g. https://example.com/webhook)'),
+  events: z
+    .array(z.string())
+    .min(1, 'Select at least one event'),
+  secret: z.string().max(256, 'Secret must be 256 characters or fewer'),
+  active: z.boolean(),
+})
+
+type CreateWebhookFormValues = z.infer<typeof createWebhookSchema>
+
+const defaultValues: CreateWebhookFormValues = {
+  name: '',
+  url: '',
+  events: [],
+  secret: '',
+  active: true,
+}
+
+/**
+ * Map form values to the API payload. The server treats empty `secret` as
+ * "not set"; we send `undefined` so the schema can mark it optional.
+ */
+function toApiPayload(values: CreateWebhookFormValues): CreateWebhookRequest {
+  return {
+    url: values.url,
+    events: values.events,
+    secret: values.secret.length > 0 ? values.secret : undefined,
+    active: values.active,
+  }
+}
+
 export default function AdminWebhooksPage() {
   const queryClient = useQueryClient()
+  // `showCreateForm` is UI flow state (whether the form section is open),
+  // not form data — it stays as plain useState, as in the other admin
+  // pages.
   const [showCreateForm, setShowCreateForm] = useState(false)
-  const [selectedEvents, setSelectedEvents] = useState<string[]>([])
-  const [formData, setFormData] = useState<CreateWebhookRequest>({
-    url: '',
-    events: [],
-    secret: '',
-    active: true,
+
+  const {
+    control,
+    handleSubmit,
+    reset,
+    setError,
+    formState: { errors, isSubmitting, submitCount },
+  } = useForm<CreateWebhookFormValues>({
+    resolver: zodResolver(createWebhookSchema),
+    defaultValues,
   })
 
   // Fetch webhooks
@@ -65,8 +130,7 @@ export default function AdminWebhooksPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['admin', 'webhooks'] })
       setShowCreateForm(false)
-      setFormData({ url: '', events: [], secret: '', active: true })
-      setSelectedEvents([])
+      reset(defaultValues)
     },
   })
 
@@ -97,29 +161,43 @@ export default function AdminWebhooksPage() {
     },
   })
 
-  const handleEventToggle = (event: string) => {
-    setSelectedEvents(prev =>
-      prev.includes(event)
-        ? prev.filter(e => e !== event)
-        : [...prev, event]
-    )
-    setFormData(prev => ({
-      ...prev,
-      events: prev.events.includes(event)
-        ? prev.events.filter(e => e !== event)
-        : [...prev.events, event],
-    }))
+  const onSubmit = handleSubmit(async (values) => {
+    const payload = toApiPayload(values)
+    try {
+      await createMutation.mutateAsync(payload)
+    } catch (err) {
+      setError('root', {
+        type: 'server',
+        message: err instanceof Error ? err.message : 'Failed to create webhook',
+      })
+    }
+  })
+
+  const handleCancel = () => {
+    setShowCreateForm(false)
+    reset(defaultValues)
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    createMutation.mutate({
-      url: formData.url,
-      events: selectedEvents,
-      secret: formData.secret || undefined,
-      active: formData.active,
-    })
+  // Build the top-of-form error payload. Mirrors the announcement page
+  // pattern: collect root + per-field issues into a list suitable for
+  // <FormError>. We only surface this after the user has attempted to
+  // submit (matches the prior behaviour).
+  const rootError = errors.root?.message
+  const issueList: Array<{ path?: ReadonlyArray<PropertyKey>; message: string }> = []
+  if (submitCount > 0) {
+    for (const [name, err] of Object.entries(errors)) {
+      if (name === 'root') continue
+      const message = err?.message
+      if (typeof message === 'string' && message.length > 0) {
+        issueList.push({ path: [name], message })
+      }
+    }
   }
+  const formErrorPayload = rootError
+    ? { issues: [{ message: rootError }, ...issueList] }
+    : issueList.length > 0
+      ? { issues: issueList }
+      : null
 
   return (
     <>
@@ -137,7 +215,13 @@ export default function AdminWebhooksPage() {
               </p>
             </div>
             <button
-              onClick={() => setShowCreateForm(!showCreateForm)}
+              onClick={() => {
+                if (showCreateForm) {
+                  handleCancel()
+                } else {
+                  setShowCreateForm(true)
+                }
+              }}
               className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
             >
               {showCreateForm ? 'Cancel' : 'Create Webhook'}
@@ -146,96 +230,144 @@ export default function AdminWebhooksPage() {
 
           {/* Create Form */}
           {showCreateForm && (
-            <div className="bg-white shadow rounded-lg mb-8">
-              <div className="px-6 py-4 border-b border-gray-200">
-                <h2 className="text-lg font-medium text-gray-900">Create New Webhook</h2>
-              </div>
-              <form onSubmit={handleSubmit} className="px-6 py-4 space-y-4">
-                <div>
-                  <label htmlFor="url" className="block text-sm font-medium text-gray-700">
-                    Webhook URL *
-                  </label>
-                  <input
-                    type="url"
-                    id="url"
-                    required
-                    value={formData.url}
-                    onChange={e => setFormData(prev => ({ ...prev, url: e.target.value }))}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="https://example.com/webhook"
-                  />
-                </div>
+            <form onSubmit={onSubmit} className="mb-8" noValidate>
+              <FormSection
+                title="Create New Webhook"
+                description="Configure a webhook endpoint to receive event notifications"
+              >
+                {formErrorPayload && <FormError error={formErrorPayload} />}
 
-                <div>
-                  <label htmlFor="secret" className="block text-sm font-medium text-gray-700">
-                    Secret (for HMAC signing)
-                  </label>
-                  <input
-                    type="text"
-                    id="secret"
-                    value={formData.secret || ''}
-                    onChange={e => setFormData(prev => ({ ...prev, secret: e.target.value }))}
-                    className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
-                    placeholder="Optional HMAC secret"
-                  />
-                </div>
+                <FormField
+                  control={control}
+                  name="name"
+                  label="Name"
+                  type="text"
+                  required
+                  placeholder="e.g. CI notifications, Slack bridge"
+                />
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">
-                    Events *
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {WEBHOOK_EVENTS.map(event => (
-                      <label key={event} className="inline-flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={selectedEvents.includes(event)}
-                          onChange={() => handleEventToggle(event)}
-                          className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">
-                          {WEBHOOK_EVENT_DESCRIPTIONS[event]}
-                        </span>
+                <FormField
+                  control={control}
+                  name="url"
+                  label="Webhook URL"
+                  type="text"
+                  required
+                  placeholder="https://example.com/webhook"
+                  description="Must be a valid absolute URL. The endpoint will receive POST requests."
+                />
+
+                <FormField
+                  control={control}
+                  name="secret"
+                  label="Secret (for HMAC signing)"
+                  type="text"
+                  placeholder="Optional HMAC secret"
+                  description="If set, the payload is signed with HMAC-SHA256 using this secret."
+                />
+
+                {/* Events — multi-select checkbox group. FormField only handles
+                    single-value fields, so we use Controller directly. */}
+                <Controller
+                  name="events"
+                  control={control}
+                  render={({ field, fieldState }) => {
+                    const selected: string[] = Array.isArray(field.value)
+                      ? (field.value as string[])
+                      : []
+                    const toggle = (event: string) => {
+                      const next = selected.includes(event)
+                        ? selected.filter((e) => e !== event)
+                        : [...selected, event]
+                      field.onChange(next)
+                    }
+                    return (
+                      <div className="w-full space-y-1.5">
+                        <label className="block text-sm font-medium text-gray-700">
+                          Events
+                          <span aria-hidden="true" className="ml-0.5 text-red-700">
+                            *
+                          </span>
+                        </label>
+                        <p className="text-xs text-gray-500">
+                          Select the events that should trigger this webhook.
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          {WEBHOOK_EVENTS.map((event) => (
+                            <label
+                              key={event}
+                              className="inline-flex items-center"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(event)}
+                                onChange={() => toggle(event)}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                                className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                              />
+                              <span className="ml-2 text-sm text-gray-700">
+                                {WEBHOOK_EVENT_DESCRIPTIONS[event]}
+                              </span>
+                            </label>
+                          ))}
+                        </div>
+                        {fieldState.error?.message && (
+                          <p role="alert" className="text-xs text-red-700">
+                            {fieldState.error.message}
+                          </p>
+                        )}
+                      </div>
+                    )
+                  }}
+                />
+
+                {/* Active immediately — boolean checkbox, mapped to FormField
+                    would require a dedicated type, so we use Controller here
+                    too, matching the announcements page. */}
+                <Controller
+                  name="active"
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex items-center">
+                      <input
+                        type="checkbox"
+                        id="active"
+                        checked={field.value}
+                        onChange={(e) => field.onChange(e.target.checked)}
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                        className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                      />
+                      <label
+                        htmlFor="active"
+                        className="ml-2 block text-sm text-gray-700"
+                      >
+                        Active immediately
                       </label>
-                    ))}
-                  </div>
-                  {selectedEvents.length === 0 && (
-                    <p className="mt-1 text-sm text-red-500">Select at least one event</p>
+                    </div>
                   )}
-                </div>
+                />
 
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="active"
-                    checked={formData.active}
-                    onChange={e => setFormData(prev => ({ ...prev, active: e.target.checked }))}
-                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
-                  />
-                  <label htmlFor="active" className="ml-2 block text-sm text-gray-700">
-                    Active immediately
-                  </label>
-                </div>
-
-                {createMutation.isError && (
-                  <p className="text-sm text-red-600">
-                    {createMutation.error instanceof Error
-                      ? createMutation.error.message
-                      : 'Failed to create webhook'}
-                  </p>
-                )}
-
-                <div className="flex justify-end">
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={handleCancel}
+                    className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+                  >
+                    Cancel
+                  </button>
                   <button
                     type="submit"
-                    disabled={selectedEvents.length === 0 || createMutation.isPending}
+                    disabled={isSubmitting || createMutation.isPending}
                     className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                   >
-                    {createMutation.isPending ? 'Creating...' : 'Create Webhook'}
+                    {isSubmitting || createMutation.isPending
+                      ? 'Creating...'
+                      : 'Create Webhook'}
                   </button>
                 </div>
-              </form>
-            </div>
+              </FormSection>
+            </form>
           )}
 
           {/* Webhooks List */}
