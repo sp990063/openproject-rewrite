@@ -1,14 +1,25 @@
 // pages/api/projects/[projectId]/index.ts
-// Phase 0 security fix: PATCH/DELETE previously had no auth at all —
-// anyone could rename or permanently delete any project. GET remains
-// public-readable (project membership visibility is enforced elsewhere).
-// TODO Phase 1: migrate the whole file to withRoute HOF + rbac callback.
-import { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
-import { prisma } from '@/lib/prisma'
+//
+// Phase 3 migration: refactored from raw handler to `withRoute` HOF.
+// PATCH/DELETE now use the new `checkProjectPermission` from
+// `lib/permissions/check.ts` (spec §4.2 wildcard-aware RBAC).
+//
+// Behavior preserved:
+//   - GET remains public-readable (project membership visibility
+//     enforced in `getProject`'s response shape).
+//   - PATCH requires `project.edit` (or system admin).
+//   - DELETE is intentionally retained as a hard delete at this path —
+//     GDPR hard-delete (system-admin only with reason) lives at
+//     `pages/api/projects/[projectId]/hard-delete.ts` (Sprint 2).
+//     System admin OR role with `project.delete` can use this path.
+import type { NextApiResponse } from 'next'
 import { z } from 'zod'
-import { checkRateLimit } from '@/lib/ratelimit'
-import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import {
+  hasProjectPermission,
+  type ProjectPermission,
+} from '@/lib/permissions/check'
 
 const updateProjectSchema = z.object({
   name: z.string().min(1).max(255).optional(),
@@ -16,132 +27,126 @@ const updateProjectSchema = z.object({
   status: z.enum(['active', 'on_hold', 'archived']).optional(),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { query } = req
-  const projectId = query.projectId as string
+const PROJECT_INCLUDE = {
+  members: {
+    include: {
+      user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+      role: true,
+    },
+  },
+  versions: true,
+  modules: true,
+} as const
 
-  if (!projectId) {
-    return res.status(400).json({ error: 'Project ID is required' })
+/**
+ * Read the project with members + role + modules.
+ * Public-readable; sensitive fields are still filtered server-side.
+ */
+async function getProject(projectId: string) {
+  const project = await prisma.project.findUnique({
+    where: { id: projectId },
+    include: PROJECT_INCLUDE,
+  })
+  if (!project) {
+    throw new ApiError(404, 'PROJECT_NOT_FOUND', 'Project not found')
   }
-
-  // Rate limiting for write methods (skip in test environment)
-  if (process.env.NODE_ENV !== 'test' && req.method !== 'GET') {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
-    const success = await checkRateLimit(ip as string)
-    if (!success) {
-      return res.status(429).json({ error: 'Too many requests' })
-    }
-  }
-
-  switch (req.method) {
-    case 'GET':
-      return getProject(req, res, projectId)
-    case 'PATCH':
-      return updateProject(req, res, projectId)
-    case 'DELETE':
-      return deleteProject(req, res, projectId)
-    default:
-      res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
+  return project
 }
 
-async function getProject(req: NextApiRequest, res: NextApiResponse, projectId: string) {
-  try {
-    const project = await prisma.project.findUnique({
-      where: { id: projectId },
-      include: {
-        members: {
-          include: {
-            user: { select: { id: true, name: true, email: true, avatarUrl: true } },
-            role: true,
-          },
+export default withRoute<
+  z.infer<typeof updateProjectSchema>,
+  unknown,
+  { projectId: string }
+>(
+  async ({ req, res, session, body, params }) => {
+    const { projectId } = params
+    if (!projectId) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Project ID is required')
+    }
+
+    // GET /api/projects/[projectId] — public-readable
+    if (req.method === 'GET') {
+      const project = await getProject(projectId)
+      return res.status(200).json({ success: true, data: project })
+    }
+
+    // PATCH /api/projects/[projectId] — require project.edit
+    if (req.method === 'PATCH') {
+      const ok = await ensureProjectPermission(
+        projectId,
+        session,
+        'project.edit',
+      )
+      if (!ok) {
+        throw new ApiError(403, 'FORBIDDEN', 'Insufficient permission to edit project')
+      }
+
+      const project = await prisma.project.update({
+        where: { id: projectId },
+        data: {
+          ...(body.name !== undefined && { name: body.name }),
+          ...(body.description !== undefined && { description: body.description }),
+          ...(body.status !== undefined && { status: body.status }),
         },
-        versions: true,
-        modules: true,
-      },
-    })
-
-    if (!project) {
-      return res.status(404).json({ error: 'Project not found' })
+        include: PROJECT_INCLUDE,
+      })
+      return res.status(200).json({ success: true, data: project })
     }
 
-    return res.status(200).json(project)
-  } catch (error) {
-    console.error('Error fetching project:', error)
-    return res.status(500).json({ error: 'Failed to fetch project' })
-  }
-}
+    // DELETE /api/projects/[projectId] — require project.delete
+    if (req.method === 'DELETE') {
+      const ok = await ensureProjectPermission(
+        projectId,
+        session,
+        'project.delete',
+      )
+      if (!ok) {
+        throw new ApiError(403, 'FORBIDDEN', 'Insufficient permission to delete project')
+      }
 
-async function updateProject(req: NextApiRequest, res: NextApiResponse, projectId: string) {
-  // Phase 0: auth + admin RBAC
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user?.id) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-  if (!session.user.isSystemAdmin) {
-    const member = await prisma.member.findUnique({
-      where: { userId_projectId: { userId: session.user.id, projectId } },
-      include: { role: { select: { permissions: true } } },
-    })
-    if (!member || !member.role.permissions.includes('PROJECT_EDIT')) {
-      return res.status(403).json({ error: 'Forbidden' })
+      await prisma.project.delete({ where: { id: projectId } })
+      return res.status(204).end()
     }
-  }
-  try {
-    const data = updateProjectSchema.parse(req.body)
 
-    const project = await prisma.project.update({
-      where: { id: projectId },
-      data: {
-        ...(data.name !== undefined && { name: data.name }),
-        ...(data.description !== undefined && { description: data.description }),
-        ...(data.status !== undefined && { status: data.status }),
-      },
-      include: {
-        members: {
-          include: {
-            user: { select: { id: true, name: true, email: true, avatarUrl: true } },
-            role: true,
-          },
-        },
-        versions: true,
-        modules: true,
-      },
-    })
+    // Should be unreachable — `methods` allow-list returns 405 first
+    return undefined
+  },
+  {
+    methods: ['GET', 'PATCH', 'DELETE'],
+    bodySchema: updateProjectSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
+  },
+)
 
-    return res.status(200).json(project)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
-    }
-    console.error('Error updating project:', error)
-    return res.status(500).json({ error: 'Failed to update project' })
+/**
+ * Local RBAC helper used by the switch inside the handler.
+ * Returns true when the session is allowed to perform `permission` on
+ * the given project. System admins are always allowed. Project members
+ * are allowed when their role's `permissions` array grants the
+ * permission (with `'*'` meaning all).
+ *
+ * Throws `ApiError(404, ...)` when the user is not a member of the
+ * project so the response shape matches the rest of the API surface
+ * (membership absence ≠ wrong role).
+ */
+async function ensureProjectPermission(
+  projectId: string,
+  session: { user: { id: string; isSystemAdmin?: boolean } },
+  permission: ProjectPermission,
+): Promise<boolean> {
+  if (!session.user.id) {
+    throw new ApiError(401, 'UNAUTHENTICATED', 'Authentication required')
   }
-}
+  if (session.user.isSystemAdmin === true) return true
 
-async function deleteProject(req: NextApiRequest, res: NextApiResponse, projectId: string) {
-  // Phase 0: auth + admin-only RBAC. Deletion is destructive enough that
-  // we require system admin OR an explicit PROJECT_DELETE permission in the
-  // project's role configuration.
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user?.id) {
-    return res.status(401).json({ error: 'Unauthorized' })
+  const member = await prisma.member.findUnique({
+    where: {
+      userId_projectId: { userId: session.user.id, projectId },
+    },
+    include: { role: { select: { permissions: true } } },
+  })
+  if (!member) {
+    throw new ApiError(404, 'NOT_A_MEMBER', 'User is not a member of this project')
   }
-  if (!session.user.isSystemAdmin) {
-    const member = await prisma.member.findUnique({
-      where: { userId_projectId: { userId: session.user.id, projectId } },
-      include: { role: { select: { permissions: true } } },
-    })
-    if (!member || !member.role.permissions.includes('PROJECT_DELETE')) {
-      return res.status(403).json({ error: 'Forbidden' })
-    }
-  }
-  try {
-    await prisma.project.delete({ where: { id: projectId } })
-    return res.status(204).end()
-  } catch (error) {
-    console.error('Error deleting project:', error)
-    return res.status(500).json({ error: 'Failed to delete project' })
-  }
+  return hasProjectPermission(member.role.permissions, permission)
 }
