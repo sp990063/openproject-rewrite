@@ -2,6 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 import { checkMeetingConflict } from '@/lib/meeting-conflict'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 const updateMeetingSchema = z.object({
   title: z.string().min(1).max(255).optional(),
@@ -11,6 +13,12 @@ const updateMeetingSchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Auth gate (Phase 7 Sprint A4 P0 fix)
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' })
+  }
+
   const { query } = req
   const id = query.id as string
 

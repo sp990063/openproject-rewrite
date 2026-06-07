@@ -1,6 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
-import { isSystemAdmin } from '@/lib/auth'
+import { authOptions, isSystemAdmin } from '@/lib/auth'
 import { z } from 'zod'
 
 const updateAnnouncementSchema = z.object({
@@ -34,15 +35,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
  */
 async function updateAnnouncement(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
-    const session = req.headers['x-user-id']
-      ? { userId: req.headers['x-user-id'] as string }
-      : null
-
-    if (!session?.userId) {
+    // Auth gate (Phase 7 Sprint A4 P0 fix: replace broken x-user-id header
+    // spoofing vulnerability with real NextAuth session check)
+    const session = await getServerSession(req, res, authOptions)
+    if (!session?.user?.id) {
       return res.status(401).json({ error: 'Unauthorized' })
     }
 
-    const isAdmin = await isSystemAdmin(session.userId)
+    const isAdmin = await isSystemAdmin(session.user.id)
     if (!isAdmin) {
       return res.status(403).json({ error: 'Forbidden - Admin only' })
     }
@@ -78,15 +78,14 @@ async function updateAnnouncement(req: NextApiRequest, res: NextApiResponse, id:
  */
 async function deleteAnnouncement(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
-    const session = req.headers['x-user-id']
-      ? { userId: req.headers['x-user-id'] as string }
-      : null
-
-    if (!session?.userId) {
+    // Auth gate (Phase 7 Sprint A4 P0 fix: replace broken x-user-id header
+    // spoofing vulnerability with real NextAuth session check)
+    const session = await getServerSession(req, res, authOptions)
+    if (!session?.user?.id) {
       return res.status(401).json({ error: 'Unauthorized' })
     }
 
-    const isAdmin = await isSystemAdmin(session.userId)
+    const isAdmin = await isSystemAdmin(session.user.id)
     if (!isAdmin) {
       return res.status(403).json({ error: 'Forbidden - Admin only' })
     }

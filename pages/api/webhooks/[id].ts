@@ -2,6 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { isValidWebhookEvent, WEBHOOK_EVENTS } from '@/lib/webhooks/event-types'
 import { z } from 'zod'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
 const updateWebhookSchema = z.object({
   url: z.string().url().optional(),
@@ -12,6 +14,12 @@ const updateWebhookSchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Auth gate (Phase 7 Sprint A4 P0 fix)
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' })
+  }
+
   const { id } = req.query
 
   if (!id || typeof id !== 'string') {
