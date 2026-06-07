@@ -33,6 +33,8 @@ model User {
   authorWPs                WorkPackage[]     @relation("Author")
   timeEntries              TimeEntry[]
   approvedTimeEntries      TimeEntry[]       @relation("TimeEntryApprover")
+  // Phase 5 Sprint 2: per-user My Page layout (replaces the static-defaults stub)
+  myPageLayout             MyPageLayout?
   // Wiki relations
   wikiPages                WikiPage[]
   wikiVersions             WikiPageVersion[]
@@ -1167,4 +1169,26 @@ model ProjectDeletionLog {
   @@index([projectId])
   @@index([performedBy])
   @@map("project_deletion_logs")
+}
+
+// Phase 5 Sprint 2: persisted "My Page" widget layout. One row per user
+// (1:1 with User). Replaces the pre-existing static-defaults stub in
+// pages/api/my-page/index.ts which always returned 4 hard-coded widgets.
+//
+// Storage shape: `widgets` is a JSON array of widget descriptors:
+//   [{ id, type, config, position: {x,y,w,h}, collapsed }]
+//
+// Types in `types/my-page.ts` (WidgetType union). We use Json (not a child
+// table) because the layout is opaque to the rest of the app — only the
+// My Page page reads it back, and the structure is user-mutable.
+model MyPageLayout {
+  id        String   @id @default(cuid())
+  userId    String   @unique
+  widgets   Json
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("my_page_layouts")
 }
