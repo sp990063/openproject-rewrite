@@ -183,6 +183,29 @@ async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
           projectName: workPackage.project.name,
         },
       })
+
+      // Phase 5 Sprint 3: trigger an in-app notification when the
+      // assignee changes (and the change is a real one — old → new).
+      // Skips: self-assign (notify yourself is noise), no-op assigns.
+      if (
+        'assigneeId' in changes &&
+        workPackage.assigneeId &&
+        workPackage.assigneeId !== session.user.id
+      ) {
+        await prisma.notification.create({
+          data: {
+            userId: workPackage.assigneeId,
+            reason: 'assigned',
+            projectId: workPackage.projectId,
+            projectName: workPackage.project.name,
+            resourceType: 'work_package',
+            resourceId: workPackage.id,
+            resourceSubject: workPackage.subject,
+            actorId: session.user.id,
+            actorName: session.user.name ?? session.user.email ?? 'Someone',
+          },
+        })
+      }
     }
 
     return res.status(200).json(workPackage)

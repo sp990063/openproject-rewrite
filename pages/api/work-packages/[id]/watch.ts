@@ -71,7 +71,13 @@ async function watchWorkPackage(req: NextApiRequest, res: NextApiResponse, id: s
   try {
     const workPackage = await prisma.workPackage.findUnique({
       where: { id },
-      select: { id: true },
+      select: {
+        id: true,
+        subject: true,
+        projectId: true,
+        project: { select: { name: true } },
+        assigneeId: true,
+      },
     })
 
     if (!workPackage) {
@@ -98,6 +104,30 @@ async function watchWorkPackage(req: NextApiRequest, res: NextApiResponse, id: s
         },
       },
     })
+
+    // Phase 5 Sprint 3: if the current user is the assignee, the act of
+    // self-watching doesn't need a notification. Otherwise, notify the
+    // assignee that someone (other than them) is now watching. Spec
+    // §2.2 NotificationReason includes 'watched' for this case.
+    if (workPackage.assigneeId && workPackage.assigneeId !== userId) {
+      const actor = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { name: true, email: true },
+      })
+      await prisma.notification.create({
+        data: {
+          userId: workPackage.assigneeId,
+          reason: 'watched',
+          projectId: workPackage.projectId,
+          projectName: workPackage.project.name,
+          resourceType: 'work_package',
+          resourceId: workPackage.id,
+          resourceSubject: workPackage.subject,
+          actorId: userId,
+          actorName: actor?.name ?? actor?.email ?? 'Someone',
+        },
+      })
+    }
 
     return res.status(200).json({
       isWatching: true,
