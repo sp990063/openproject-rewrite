@@ -29,6 +29,7 @@ import {
 } from '@/components/ui/DropdownMenu'
 import { useRouter } from 'next/router'
 import { SearchAutocomplete } from '@/components/search/SearchAutocomplete'
+import { useUnreadCount } from '@/hooks/useNotifications'
 import { cn } from '@/lib/utils'
 
 // ─── Theme Switcher ────────────────────────────────────────────────────────
@@ -198,10 +199,17 @@ function GlobalSearch() {
 // ─── Notification Bell ─────────────────────────────────────────────────────
 
 function NotificationButton() {
+  // Pre-existing stub: the indicator dot was a static aria-hidden span,
+  // so the bell looked "always has unread" even when the inbox was empty.
+  // Wire to the real unread-count hook (same one NotificationCenter uses)
+  // and only render the dot when count > 0.
+  const { data: unreadCount = 0, isLoading } = useUnreadCount()
+  const hasUnread = !isLoading && unreadCount > 0
+  const display = unreadCount > 99 ? '99+' : String(unreadCount)
   return (
     <Link
       href="/notifications"
-      aria-label="Notifications"
+      aria-label={hasUnread ? `Notifications (${unreadCount} unread)` : 'Notifications'}
       className={cn(
         'relative inline-flex items-center justify-center',
         'h-9 w-9 rounded-md',
@@ -212,11 +220,14 @@ function NotificationButton() {
       )}
     >
       <Bell className="size-4" />
-      {/* Unread indicator dot — wire to real unread count in a future commit */}
-      <span
-        aria-hidden
-        className="absolute top-2 right-2 size-1.5 rounded-full bg-error"
-      />
+      {hasUnread && (
+        <span
+          aria-hidden
+          className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] bg-error text-white text-[10px] font-medium rounded-full flex items-center justify-center px-1"
+        >
+          {display}
+        </span>
+      )}
     </Link>
   )
 }

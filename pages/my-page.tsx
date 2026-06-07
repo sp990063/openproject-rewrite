@@ -97,8 +97,14 @@ function MyProjectsWidget() {
 }
 
 function NotificationWidget() {
-  const { data } = useNotifications(1)
-  const unread = data?.meta?.unreadCount ?? 0
+  // Pre-existing bug: was `useNotifications(1)` — typed signature is
+  // `useNotifications({ page?, perPage?, unreadOnly? })`, so the bare
+  // `1` was treated as the options object and the hook's runtime read
+  // of `options.page` would have been undefined, silently fetching
+  // the default page anyway but logging a type error. Pass an actual
+  // options bag.
+  const { data } = useNotifications({ page: 1, perPage: 1 })
+  const unread = data?.data?.meta?.unreadCount ?? 0
   return (
     <div className="text-center">
       <div className="text-4xl font-bold text-blue-600">{unread}</div>

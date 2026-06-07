@@ -1,5 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth/next'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import { successResponse, errorResponse } from '@/lib/api-response'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -8,8 +10,34 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json(errorResponse('METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`))
   }
 
+  // Phase 5 Sprint 1: auth gate (was missing — would leak all per-project
+  // time entries to any unauthenticated caller). Require auth + membership
+  // on the queried project. Admins bypass membership.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json(errorResponse('UNAUTHORIZED', 'Not authenticated'))
+  }
+  const viewerId = session.user.id
+
   try {
     const { projectId, userId, from, to, includeDeleted } = req.query
+
+    // Authorization: caller must be a member of the queried project (or admin).
+    if (projectId && typeof projectId === 'string') {
+      const isAdmin = await prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { isSystemAdmin: true },
+      }).then((u) => u?.isSystemAdmin === true)
+      if (!isAdmin) {
+        const membership = await prisma.member.findFirst({
+          where: { projectId, userId: viewerId },
+          select: { id: true },
+        })
+        if (!membership) {
+          return res.status(403).json(errorResponse('FORBIDDEN', 'Not a member of this project'))
+        }
+      }
+    }
 
     // Build where clause
     const where: Record<string, unknown> = {}

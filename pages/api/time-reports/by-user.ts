@@ -1,5 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth/next'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import { successResponse, errorResponse } from '@/lib/api-response'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -8,8 +10,41 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(405).json(errorResponse('METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`))
   }
 
+  // Phase 5 Sprint 1: auth gate (was missing — would leak all time entries
+  // to any unauthenticated caller). Restrict to: (a) self, (b) project members
+  // whose projectId was supplied, (c) admins. Anonymous callers get 401.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json(errorResponse('UNAUTHORIZED', 'Not authenticated'))
+  }
+  const viewerId = session.user.id
+
   try {
     const { userId, projectId, from, to, includeDeleted } = req.query
+
+    // Authorization: if the caller is asking about a specific user, they must
+    // be either that user, a system admin, or a project member when projectId
+    // is also supplied.
+    if (userId && typeof userId === 'string' && userId !== viewerId) {
+      const isAdmin = await prisma.user.findUnique({
+        where: { id: viewerId },
+        select: { isSystemAdmin: true },
+      }).then((u) => u?.isSystemAdmin === true)
+      if (!isAdmin) {
+        // Allow if they're a member of the filtered project
+        if (projectId && typeof projectId === 'string') {
+          const membership = await prisma.member.findFirst({
+            where: { projectId, userId: viewerId },
+            select: { id: true },
+          })
+          if (!membership) {
+            return res.status(403).json(errorResponse('FORBIDDEN', 'Cannot view another user\'s time report'))
+          }
+        } else {
+          return res.status(403).json(errorResponse('FORBIDDEN', 'Cannot view another user\'s time report'))
+        }
+      }
+    }
 
     // Build where clause
     const where: Record<string, unknown> = {}

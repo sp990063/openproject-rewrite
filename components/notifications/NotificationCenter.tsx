@@ -22,7 +22,10 @@ export function NotificationCenter({ className }: NotificationCenterProps) {
   const { data, isLoading } = useNotifications({ perPage: 20 });
   const markAllRead = useMarkAllNotificationsRead();
 
-  const notifications = data?.data ?? [];
+  // Hook returns the raw API response: { success, data: { notifications, meta } }
+  // Pre-existing bug: was reading `data?.data` (the {notifications, meta} object) and
+  // treating it as a Notification[], so the list always rendered as empty.
+  const notifications: Notification[] = data?.data?.notifications ?? [];
   const unreadCount = notifications.filter((n: Notification) => !n.read).length;
 
   // 點擊外部關閉下拉
