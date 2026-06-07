@@ -46,6 +46,9 @@ export function useUnreadCount() {
       const json = await res.json()
       return (json.data as { unreadCount: number }).unreadCount
     },
-    refetchInterval: 30_000, // 每 30 秒輪詢
+    // Phase 6 Sprint 1: removed refetchInterval: 30_000. SSEProvider now
+    // invalidates this query key when a `notification.new` event arrives
+    // (see hooks/useSSE.ts). Polling was wasting bandwidth and adding up
+    // to 30s latency for a feature that should be realtime.
   })
 }

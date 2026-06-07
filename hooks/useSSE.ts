@@ -22,7 +22,6 @@ export function useSSE(userId: string | undefined) {
         break
       case 'notification.new':
         queryClient.invalidateQueries({ queryKey: ['notifications'] })
-        queryClient.invalidateQueries({ queryKey: ['unread-count'] })
         break
       default:
         console.log('[SSE] Unknown event:', event.type)

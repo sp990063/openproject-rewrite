@@ -1,4 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { checkRateLimit } from '@/lib/ratelimit'
 
@@ -8,6 +10,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
   if (!id) {
     return res.status(400).json({ error: 'Work package ID is required' })
+  }
+
+  // Auth gate (Phase 7 sprint A1 P0 fix)
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' })
   }
 
   if (req.method !== 'GET') {
