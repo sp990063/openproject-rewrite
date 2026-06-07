@@ -12,6 +12,8 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "test": "vitest",
+    "test:integration": "vitest run --config vitest.integration.config.ts __tests__/api/routes-integration.test.ts __tests__/api/auth-guard.test.ts",
+    "test:auth-guard": "vitest run --config vitest.integration.config.ts __tests__/api/auth-guard.test.ts",
     "analyze": "ANALYZE=true next build"
   },
   "prisma": {

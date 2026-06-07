@@ -18,7 +18,7 @@ export default defineConfig({
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
     globals: true,
-    exclude: ['.next/**', 'node_modules/**', 'pages/api/__tests__/**', '__tests__/api/routes-integration.test.ts'],
+    exclude: ['.next/**', 'node_modules/**', 'pages/api/__tests__/**', '__tests__/api/routes-integration.test.ts', '__tests__/api/auth-guard.test.ts'],
     env: {
       DATABASE_URL: process.env.DATABASE_URL || 'postgresql://cwlai@/openproject_rewrite?host=/var/run/postgresql&schema=public',
     },

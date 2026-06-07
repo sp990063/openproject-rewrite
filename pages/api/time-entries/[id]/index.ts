@@ -34,6 +34,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function getTimeEntry(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
+    // Auth gate (Phase 7 Sprint D P0 fix: was missing — leaked
+    // user/approver names + work package context to unauthenticated callers)
+    const session = await getServerSession(req, res, authOptions)
+    if (!session?.user) {
+      return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
+    }
+
     const entry = await prisma.timeEntry.findUnique({
       where: { id },
       include: {

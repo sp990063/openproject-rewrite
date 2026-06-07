@@ -6,10 +6,20 @@ import { checkRateLimit } from '@/lib/ratelimit'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   const { query } = req
-  const id = query.id as string
+  // Route param is [projectId] (folder name) — NOT [id]
+  // Phase 7 Sprint D fix: was reading query.id (undefined → 400 on every request,
+  //   auth gate never reached for GET → P0 hole once route is fixed)
+  const id = query.projectId as string
 
   if (!id) {
     return res.status(400).json({ error: 'Project ID is required' })
+  }
+
+  // Auth gate (Phase 7 Sprint D P0 fix: moved BEFORE method check so
+  // GET is gated, not just POST)
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' })
   }
 
   // Rate limiting for write methods (skip in test environment)
@@ -31,7 +41,8 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
 async function copyProject(req: NextApiRequest, res: NextApiResponse, id: string) {
   try {
-    // Auth check
+    // Auth check (Phase 7 Sprint D: now also gated at top of handler; this
+    // is defensive duplication for the POST body-validation path)
     const session = await getServerSession(req, res, authOptions)
     if (!session?.user) {
       return res.status(401).json({ error: 'Unauthorized' })

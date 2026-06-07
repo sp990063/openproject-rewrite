@@ -23,6 +23,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(400).json({ error: 'Project ID is required' })
   }
 
+  // Auth gate (Phase 7 Sprint D P0 fix: was missing — GET leaked member
+  // emails + user roles to unauthenticated callers. PATCH/DELETE had
+  // their own auth checks inside the handler, but were inconsistent.)
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' })
+  }
+
   // Rate limiting for write methods (skip in test environment)
   if (process.env.NODE_ENV !== 'test' && req.method !== 'GET') {
     const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
