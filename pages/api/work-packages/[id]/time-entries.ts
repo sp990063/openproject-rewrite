@@ -1,29 +1,27 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+// pages/api/work-packages/[id]/time-entries.ts
+// Phase 7 Sprint A2: refactored to withRoute HOF + project-membership RBAC
+// (was: direct handler with getServerSession+401, see Phase 7 Sprint A1
+// 050bdbc for the auth-only fix). Behavior change vs A1:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from project-membership check (NEW: was 200 with data)
+//   - Uniform error envelope via ApiError
 import { prisma } from '@/lib/prisma'
-import { successResponse, errorResponse } from '@/lib/api-response'
+import { withRoute } from '@/lib/api/withRoute'
+import { assertWorkPackageViewPermission } from '@/lib/auth/workPackage'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
-    return res.status(405).json(errorResponse('METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`))
-  }
+export default withRoute(
+  async ({ req, res, session, query }) => {
+    const id = (query as { id?: string }).id
+    if (!id) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'Work package ID is required' },
+      })
+    }
 
-  const { query } = req
-  const id = query.id as string
+    // RBAC: user must be a project member (or system admin) to see time entries
+    await assertWorkPackageViewPermission(id, session.user.id, !!session.user.isSystemAdmin)
 
-  if (!id) {
-    return res.status(400).json(errorResponse('BAD_REQUEST', 'Work package ID is required'))
-  }
-
-  // Auth gate (Phase 7 sprint A1 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json(errorResponse('UNAUTHORIZED', 'Authentication required'))
-  }
-
-  try {
     const { includeDeleted } = req.query
 
     // Build where clause
@@ -40,7 +38,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       where,
       include: {
         workPackage: {
-          select: { id: true, subject: true, estimatedHours: true }
+          select: { id: true, subject: true, estimatedHours: true },
         },
         user: { select: { id: true, name: true } },
         approver: { select: { id: true, name: true } },
@@ -68,9 +66,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       }
     })
 
-    return res.status(200).json(successResponse({ entries: entriesWithOvertime }))
-  } catch (error) {
-    console.error('Error fetching work package time entries:', error)
-    return res.status(500).json(errorResponse('INTERNAL_ERROR', 'Failed to fetch time entries'))
+    return res.status(200).json({
+      success: true,
+      data: { entries: entriesWithOvertime },
+    })
+  },
+  {
+    methods: ['GET'],
   }
-}
+)

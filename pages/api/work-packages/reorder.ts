@@ -5,41 +5,22 @@
 // 1-arg getServerSession() form. Now: route is auth-gated by withRoute
 // (session.user.id guaranteed), and the permission check uses the
 // session.user.id we already have in scope — no nested getServerSession call.
+//
+// Phase 7 Sprint A2: assertWorkPackageEditPermission moved to
+// lib/auth/workPackage.ts so it can be shared with
+// pages/api/work-packages/[id]/activities.ts, relations.ts, and
+// time-entries.ts. Behavior identical — same query, same error.
 import type { NextApiResponse } from 'next'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
 import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertWorkPackageEditPermission } from '@/lib/auth/workPackage'
 
 const reorderSchema = z.object({
   workPackageId: z.string().cuid(),
   targetStatusId: z.string().cuid(),
   position: z.number().int().min(0),
 })
-
-/** Inline RBAC check: returns null if permitted, or an ApiError to throw. */
-async function assertWorkPackageEditPermission(
-  workPackageId: string,
-  userId: string,
-  isSystemAdmin: boolean
-): Promise<void> {
-  if (isSystemAdmin) return
-  const wp = await prisma.workPackage.findUnique({
-    where: { id: workPackageId },
-    select: { projectId: true },
-  })
-  if (!wp) {
-    throw new ApiError(404, 'WORK_PACKAGE_NOT_FOUND', 'Work package not found')
-  }
-  const member = await prisma.member.findUnique({
-    where: {
-      userId_projectId: { userId, projectId: wp.projectId },
-    },
-    include: { role: { select: { permissions: true } } },
-  })
-  if (!member || !member.role.permissions.includes('WORK_PACKAGE_EDIT')) {
-    throw new ApiError(403, 'FORBIDDEN', 'Forbidden')
-  }
-}
 
 export default withRoute<z.infer<typeof reorderSchema>, unknown, unknown>(
   async ({ req, res, session, body }) => {

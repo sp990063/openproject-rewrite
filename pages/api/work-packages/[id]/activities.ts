@@ -1,38 +1,29 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+// pages/api/work-packages/[id]/activities.ts
+// Phase 7 Sprint A2: refactored to withRoute HOF + project-membership RBAC
+// (was: direct handler with getServerSession+401, see Phase 7 Sprint A1
+// 050bdbc for the auth-only fix). Behavior change vs A1:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from project-membership check (NEW: was 200 with data)
+//   - Uniform error envelope via ApiError
 import { prisma } from '@/lib/prisma'
-import { checkRateLimit } from '@/lib/ratelimit'
+import { withRoute } from '@/lib/api/withRoute'
+import { assertWorkPackageViewPermission } from '@/lib/auth/workPackage'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { query } = req
-  const id = query.id as string
-
-  if (!id) {
-    return res.status(400).json({ error: 'Work package ID is required' })
-  }
-
-  // Auth gate (Phase 7 sprint A1 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
-
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
-    return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-
-  // Rate limiting
-  if (process.env.NODE_ENV !== 'test') {
-    const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress
-    const success = await checkRateLimit(ip as string)
-    if (!success) {
-      return res.status(429).json({ error: 'Too many requests' })
+export default withRoute(
+  async ({ req, res, session, query }) => {
+    const id = (query as { id?: string }).id
+    if (!id) {
+      // withRoute's paramsSchema could validate this, but we keep the
+      // runtime check for direct-call safety.
+      return res.status(400).json({
+        success: false,
+        error: { code: 'BAD_REQUEST', message: 'Work package ID is required' },
+      })
     }
-  }
 
-  try {
+    // RBAC: user must be a project member (or system admin) to see activities
+    await assertWorkPackageViewPermission(id, session.user.id, !!session.user.isSystemAdmin)
+
     const activities = await prisma.activity.findMany({
       where: { workPackageId: id },
       include: {
@@ -61,9 +52,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       user: userMap[a.userId] ?? { id: a.userId, name: 'Unknown', email: '', avatarUrl: null },
     }))
 
-    return res.status(200).json(activitiesWithUsers)
-  } catch (error) {
-    console.error('Error fetching activities:', error)
-    return res.status(500).json({ error: 'Failed to fetch activities' })
+    return res.status(200).json({ success: true, data: activitiesWithUsers })
+  },
+  {
+    methods: ['GET'],
   }
-}
+)
