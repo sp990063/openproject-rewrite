@@ -11,7 +11,7 @@ import { assertWorkPackageViewPermission } from '@/lib/auth/workPackage'
 
 export default withRoute(
   async ({ req, res, session, query }) => {
-    const id = (query as { id?: string }).id
+    const id = query.id as string
     if (!id) {
       // withRoute's paramsSchema could validate this, but we keep the
       // runtime check for direct-call safety.

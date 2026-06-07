@@ -22,7 +22,7 @@ const createRelationSchema = z.object({
 
 export default withRoute(
   async ({ req, res, session, query, body }) => {
-    const id = (query as { id?: string }).id
+    const id = query.id as string
     if (!id) {
       return res.status(400).json({
         success: false,

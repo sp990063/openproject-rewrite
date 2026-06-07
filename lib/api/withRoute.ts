@@ -256,7 +256,7 @@ function formatErrorBody(err: unknown): ApiErrorBody {
  * )
  * ```
  */
-export function withRoute<TBody = unknown, TQuery = TQuery, TParams = TParams>(
+export function withRoute<TBody = unknown, TQuery = QueryParams, TParams = PathParams>(
   handler: RouteHandler<TBody, TQuery, TParams>,
   config: RouteConfig<TBody, TQuery, TParams> = {}
 ): NextApiHandler {
@@ -326,7 +326,7 @@ export function withRoute<TBody = unknown, TQuery = TQuery, TParams = TParams>(
       // 5. RBAC
       if (config.rbac && session) {
         const verdict = await config.rbac(session, { req, body, query, params })
-        if (verdict !== true) {
+        if (verdict !== true && verdict !== false) {
           return res.status(verdict.status).json({
             success: false,
             error: { code: verdict.code, message: verdict.message },
