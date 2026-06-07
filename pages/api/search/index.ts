@@ -1,4 +1,6 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
 
@@ -14,6 +16,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   if (req.method !== 'POST' && req.method !== 'GET') {
     res.setHeader('Allow', ['GET', 'POST'])
     return res.status(405).json({ error: `Method ${req.method} not allowed` })
+  }
+
+  // Sprint 5 fix: add auth gate — pre-existing endpoint allowed unauthenticated
+  // access which leaks project/wiki/forum/document/meeting/work-package data.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user) {
+    return res.status(401).json({ error: 'Unauthorized' })
   }
 
   try {

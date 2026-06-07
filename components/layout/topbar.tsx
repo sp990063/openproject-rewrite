@@ -27,6 +27,8 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
 } from '@/components/ui/DropdownMenu'
+import { useRouter } from 'next/router'
+import { SearchAutocomplete } from '@/components/search/SearchAutocomplete'
 import { cn } from '@/lib/utils'
 
 // ─── Theme Switcher ────────────────────────────────────────────────────────
@@ -172,30 +174,24 @@ function UserMenu() {
 // ─── Search Box ────────────────────────────────────────────────────────────
 
 function GlobalSearch() {
+  // Sprint 5 fix: wire the previously-styled-only input to the real
+  // SearchAutocomplete component. Pressing Enter (or selecting a
+  // suggestion / recent) navigates to /search?q=... for full results.
+  const router = useRouter()
+  const [value, setValue] = React.useState('')
+
   return (
-    <form
-      role="search"
-      onSubmit={(e) => e.preventDefault()}
-      className="relative flex-1 max-w-xl"
-    >
-      <Search
-        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 size-4 text-text-subtle"
-        aria-hidden
-      />
-      <input
-        type="search"
-        aria-label="Global search"
+    <div className="relative flex-1 max-w-xl">
+      <SearchAutocomplete
+        value={value}
+        onChange={setValue}
+        onSearch={(q) => {
+          if (q.trim()) router.push(`/search?q=${encodeURIComponent(q.trim())}`)
+        }}
         placeholder="Search projects, work packages, users…  (Press / to focus)"
-        className={cn(
-          'w-full h-9 pl-9 pr-3 rounded-md text-sm',
-          'bg-sunken border border-transparent',
-          'text-text-default placeholder:text-text-subtle',
-          'hover:border-border-subtle',
-          'focus:outline-none focus:bg-raised focus:border-border-focus focus:shadow-focus',
-          'transition-colors duration-fast ease-out'
-        )}
+        className="w-full"
       />
-    </form>
+    </div>
   )
 }
 
