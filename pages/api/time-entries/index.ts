@@ -28,6 +28,14 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 async function getTimeEntries(req: NextApiRequest, res: NextApiResponse) {
   try {
     const session = await getServerSession(req, res, authOptions)
+    if (!session?.user) {
+      // Phase 5 smoke test caught this: pre-existing code called
+      // getServerSession but never used the result, so anonymous callers
+      // got a 200 with all (filtered) time entries. Same security gap as
+      // /api/time-reports/* (Sprint 1 fix) and /api/search (Phase 4
+      // Sprint 5 fix).
+      return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
+    }
     const { userId, projectId, workPackageId, from, to, includeDeleted } = req.query
 
     // Build where clause
