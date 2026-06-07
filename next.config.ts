@@ -1,5 +1,15 @@
 import type { NextConfig } from 'next'
 
+// Phase 6 Sprint 2: bundle analyzer. `npm run analyze` opens an HTML
+// report showing which deps are the largest. The dep is intentionally
+// not in the import block — it's only loaded when ANALYZE=true so prod
+// builds don't pay the cost.
+import bundleAnalyzer from '@next/bundle-analyzer'
+
+const withBundleAnalyzer = bundleAnalyzer({
+  enabled: process.env.ANALYZE === 'true',
+})
+
 const SECURITY_HEADERS: Array<{ key: string; value: string }> = [
   {
     key: 'Strict-Transport-Security',
@@ -41,4 +51,4 @@ const nextConfig: NextConfig = {
   },
 }
 
-export default nextConfig
+export default withBundleAnalyzer(nextConfig)

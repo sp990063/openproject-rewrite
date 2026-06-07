@@ -2,6 +2,8 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { getServerSession } from 'next-auth'
 import { prisma } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
+// Phase 6 Sprint 1: SSE push on the 'watched' notification
+import { broadcastNotification } from '@/lib/notifications/realtime'
 
 /**
  * GET /api/work-packages/[id]/watch
@@ -114,7 +116,7 @@ async function watchWorkPackage(req: NextApiRequest, res: NextApiResponse, id: s
         where: { id: userId },
         select: { name: true, email: true },
       })
-      await prisma.notification.create({
+      const notification = await prisma.notification.create({
         data: {
           userId: workPackage.assigneeId,
           reason: 'watched',
@@ -127,6 +129,13 @@ async function watchWorkPackage(req: NextApiRequest, res: NextApiResponse, id: s
           actorName: actor?.name ?? actor?.email ?? 'Someone',
         },
       })
+      // Phase 6 Sprint 1: SSE push so the assignee's open tabs update
+      // without waiting for the 30s polling cycle.
+      try {
+        await broadcastNotification(notification.userId, notification.id)
+      } catch (sseErr) {
+        console.error('[SSE] broadcastNotification failed:', sseErr)
+      }
     }
 
     return res.status(200).json({

@@ -1,5 +1,7 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth/next'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import { isValidWebhookEvent, WEBHOOK_EVENTS } from '@/lib/webhooks/event-types'
 import { z } from 'zod'
 
@@ -12,6 +14,20 @@ const createWebhookSchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Phase 6 3-angle review P0: added auth gate. Pre-existing route was
+  // publicly readable AND writable — anyone could enumerate every
+  // project's webhook URLs (data leak — webhook URLs are often
+  // internal/exfil targets) and could create new webhooks pointing
+  // at attacker-controlled endpoints (data exfiltration on any
+  // subscribed event). Restrict to system admin for now.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json({ error: 'Unauthorized' })
+  }
+  if (!session.user.isSystemAdmin) {
+    return res.status(403).json({ error: 'Admin only' })
+  }
+
   switch (req.method) {
     case 'GET':
       return listWebhooks(req, res)

@@ -8,6 +8,10 @@ import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClient } from '@/lib/query-client'
 import { ThemeProvider } from '@/components/theme-provider'
 import { NuqsAdapter } from 'nuqs/adapters/next/pages'
+// Phase 6 Sprint 1: mount SSEProvider once so every page subscribes to the
+// user's Redis pub/sub channel. Invalidation cascades through React Query
+// without any page-level code.
+import { SSEProvider } from '@/components/realtime/SSEProvider'
 
 export default function App({
   Component,
@@ -18,7 +22,9 @@ export default function App({
       <NuqsAdapter>
         <SessionProvider session={session}>
           <ThemeProvider defaultTheme="system" storageKey="op-rewrite-theme">
-            <Component {...pageProps} />
+            <SSEProvider>
+              <Component {...pageProps} />
+            </SSEProvider>
           </ThemeProvider>
         </SessionProvider>
       </NuqsAdapter>

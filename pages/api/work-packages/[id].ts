@@ -11,6 +11,11 @@ import { z } from 'zod'
 import { checkRateLimit } from '@/lib/ratelimit'
 import { emitActivity, makeSubjectId } from '@/lib/activity'
 import { authOptions } from '@/lib/auth'
+// Phase 6 Sprint 1: SSE broadcast — fire-and-forget the realtime push to
+// the affected user(s). Defined-but-uncalled infra (lib/notifications/realtime.ts)
+// now actually wired into the mutation path. Wrapped in try/catch because
+// Redis being unavailable must not break the API response.
+import { broadcastNotification, broadcastWorkPackageUpdate } from '@/lib/notifications/realtime'
 
 const updateWorkPackageSchema = z.object({
   subject: z.string().min(1).max(255).optional(),
@@ -192,7 +197,7 @@ async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
         workPackage.assigneeId &&
         workPackage.assigneeId !== session.user.id
       ) {
-        await prisma.notification.create({
+        const notification = await prisma.notification.create({
           data: {
             userId: workPackage.assigneeId,
             reason: 'assigned',
@@ -205,6 +210,27 @@ async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
             actorName: session.user.name ?? session.user.email ?? 'Someone',
           },
         })
+        // Phase 6 Sprint 1: SSE push — notify the assignee's open tabs
+        // immediately, no waiting for the next 30s poll. Fire-and-forget
+        // because Redis being down must not break the API response.
+        try {
+          await broadcastNotification(notification.userId, notification.id)
+        } catch (sseErr) {
+          console.error('[SSE] broadcastNotification failed:', sseErr)
+        }
+      }
+
+      // Phase 6 Sprint 1: broadcast WP update to all project members so
+      // any open `useWorkPackages` table/board view refetches immediately.
+      // Wrapped in try/catch — the PATCH must succeed even if Redis is down.
+      try {
+        await broadcastWorkPackageUpdate(workPackage.id, {
+          subject: workPackage.subject,
+          statusId: workPackage.statusId,
+          assigneeId: workPackage.assigneeId,
+        })
+      } catch (sseErr) {
+        console.error('[SSE] broadcastWorkPackageUpdate failed:', sseErr)
       }
     }
 

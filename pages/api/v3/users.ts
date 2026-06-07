@@ -1,16 +1,36 @@
 import { NextApiRequest, NextApiResponse } from 'next'
+import { getServerSession } from 'next-auth/next'
 import { prisma } from '@/lib/prisma'
+import { authOptions } from '@/lib/auth'
 import { v3ListResponse, v3Error } from '@/lib/api/v3/response-formatter'
 
 /**
  * OpenProject API v3 - Users list endpoint
  * GET /api/v3/users - List users
  * Supports ?offset=&pageSize=
+ *
+ * Phase 6 3-angle review P0: added auth gate. Pre-existing route was
+ * publicly readable and returned each user's email + isSystemAdmin flag
+ * — full PII + admin roster dump to anyone with the URL. Same pattern
+ * as the prior Phase 5 fixes (/api/search, /api/time-reports/*, etc.).
+ * Restrict to system admin (full PII dump) or any authenticated user
+ * (sanitized view without email) — for now we just gate to admin since
+ * the v3 response shape is the admin-level PII dump.
  */
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
     res.setHeader('Allow', ['GET'])
     return res.status(405).json(v3Error('methodNotAllowed', `Method ${req.method} not allowed`))
+  }
+
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json(v3Error('unauthorized', 'Not authenticated'))
+  }
+  // Only system admins can list all users with email + isSystemAdmin.
+  // The shape is a PII dump — non-admins should hit a sanitized endpoint.
+  if (!session.user.isSystemAdmin) {
+    return res.status(403).json(v3Error('forbidden', 'Admin only'))
   }
 
   try {

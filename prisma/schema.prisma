@@ -805,6 +805,8 @@ model Notification {
   @@index([userId, read])
   @@index([userId, createdAt])
   @@map("notifications")
+  @@index([userId, read, createdAt])
+
 }
 
 model NotificationSetting {
