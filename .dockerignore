@@ -1,0 +1,70 @@
+# =====================================================================
+# OpenProject Rewrite — .dockerignore
+# =====================================================================
+# Reduces Docker build context size by ~80% (excludes node_modules,
+# .next, .git, dev files). Smaller context = faster builds + smaller
+# image layers to cache.
+
+# Build artifacts
+.next/
+out/
+build/
+dist/
+
+# Dependencies (re-installed in Dockerfile)
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+__tests__/
+*.test.ts
+*.test.tsx
+*.spec.ts
+*.spec.tsx
+vitest.config.ts
+vitest.integration.config.ts
+
+# Development files
+.git/
+.gitignore
+.gitattributes
+.github/
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Debug / temporary scripts (not part of prod build)
+scripts/debug-*
+scripts/ss_*
+test_*.js
+test_*.ts
+
+# Hermes session DB (never in image)
+.hermes/
+
+# Env files (use --env-file at run time)
+.env
+.env.local
+.env.*.local
+.env.production
+.env.test
+
+# Logs
+*.log
+logs/
+tmp/
+temp/
+
+# TypeScript build cache
+*.tsbuildinfo
+
+# Python (wiki docs scrapers)
+docs/__pycache__/
+*.pyc
+
+# Code analysis
+.codegraph/
