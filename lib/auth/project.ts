@@ -133,3 +133,98 @@ export async function assertPostProjectMembership(
     threadId: post.threadId,
   }
 }
+
+/**
+ * Resolve a meetingId to its parent projectId and assert the user is a
+ * member of that project. Returns the projectId on success.
+ *
+ * For routes like `/api/meetings/[id]/...` that only carry the meetingId
+ * in the URL — we still need project-membership to gate access.
+ */
+export async function assertMeetingProjectMembership(
+  meetingId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!meetingId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Meeting ID is required')
+  }
+  const meeting = await prisma.meeting.findUnique({
+    where: { id: meetingId },
+    select: { projectId: true },
+  })
+  if (!meeting) {
+    throw new ApiError(404, 'MEETING_NOT_FOUND', 'Meeting not found')
+  }
+  await assertProjectMembership(meeting.projectId, userId, isSystemAdmin)
+  return meeting.projectId
+}
+
+/**
+ * Same as assertMeetingProjectMembership but for agenda items — resolves
+ * agendaId → meeting → project, asserts project membership.
+ */
+export async function assertMeetingAgendaProjectMembership(
+  agendaId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!agendaId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Agenda ID is required')
+  }
+  const agenda = await prisma.meetingAgendaItem.findUnique({
+    where: { id: agendaId },
+    select: { meetingId: true, meeting: { select: { projectId: true } } },
+  })
+  if (!agenda) {
+    throw new ApiError(404, 'AGENDA_ITEM_NOT_FOUND', 'Agenda item not found')
+  }
+  await assertProjectMembership(agenda.meeting.projectId, userId, isSystemAdmin)
+  return agenda.meeting.projectId
+}
+
+/**
+ * Same as assertMeetingProjectMembership but for meeting minutes — resolves
+ * minutesId → meeting → project, asserts project membership.
+ */
+export async function assertMeetingMinutesProjectMembership(
+  minutesId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!minutesId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Minutes ID is required')
+  }
+  const minutes = await prisma.meetingMinutes.findUnique({
+    where: { id: minutesId },
+    select: { meetingId: true, meeting: { select: { projectId: true } } },
+  })
+  if (!minutes) {
+    throw new ApiError(404, 'MINUTES_NOT_FOUND', 'Meeting minutes not found')
+  }
+  await assertProjectMembership(minutes.meeting.projectId, userId, isSystemAdmin)
+  return minutes.meeting.projectId
+}
+
+/**
+ * Same as assertMeetingProjectMembership but for meeting attendees — resolves
+ * attendeeId → meeting → project, asserts project membership.
+ */
+export async function assertMeetingAttendeeProjectMembership(
+  attendeeId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!attendeeId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Attendee ID is required')
+  }
+  const attendee = await prisma.meetingAttendee.findUnique({
+    where: { id: attendeeId },
+    select: { meetingId: true, meeting: { select: { projectId: true } } },
+  })
+  if (!attendee) {
+    throw new ApiError(404, 'ATTENDEE_NOT_FOUND', 'Meeting attendee not found')
+  }
+  await assertProjectMembership(attendee.meeting.projectId, userId, isSystemAdmin)
+  return attendee.meeting.projectId
+}
