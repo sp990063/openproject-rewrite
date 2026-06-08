@@ -1,5 +1,30 @@
 import { useQuery } from '@tanstack/react-query'
 import { queryKeys } from '@/queries/queryKeys'
+import { parseErrorResponse, MeetingApiError } from './useMeetingMutations'
+
+export interface MeetingAgendaItem {
+  id: string
+  meetingId: string
+  title: string
+  notes?: string | null
+  duration?: number | null
+  position: number
+}
+
+export interface MeetingMinutes {
+  id: string
+  meetingId: string
+  content: string
+  authorId: string
+  createdAt: Date | string
+  updatedAt: Date | string
+  author?: {
+    id: string
+    name: string
+    email?: string
+    avatarUrl?: string | null
+  }
+}
 
 export interface MeetingAttendee {
   id: string
@@ -36,6 +61,8 @@ export interface Meeting {
     identifier: string
   }
   attendees?: MeetingAttendee[]
+  agenda?: MeetingAgendaItem[]
+  minutes?: MeetingMinutes | null
   _count?: { agenda: number }
 }
 
@@ -49,13 +76,13 @@ async function fetchMeetings(
 
   const url = `/api/projects/${projectId}/meetings${params.toString() ? '?' + params.toString() : ''}`
   const res = await fetch(url)
-  if (!res.ok) throw new Error('Failed to fetch meetings')
+  if (!res.ok) throw await parseErrorResponse(res)
   return res.json()
 }
 
 async function fetchMeeting(projectId: string, id: string): Promise<Meeting> {
   const res = await fetch(`/api/projects/${projectId}/meetings/${id}`)
-  if (!res.ok) throw new Error('Failed to fetch meeting')
+  if (!res.ok) throw await parseErrorResponse(res)
   return res.json()
 }
 

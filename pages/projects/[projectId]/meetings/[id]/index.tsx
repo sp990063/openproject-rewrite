@@ -10,7 +10,16 @@ import { MeetingParticipantList } from '@/components/meetings/MeetingParticipant
 import { MeetingAgendaTab } from '@/components/meetings/MeetingAgendaTab'
 import { MeetingMinutesTab } from '@/components/meetings/MeetingMinutesTab'
 import { useMeeting, useMeetings } from '@/hooks/useMeetings'
-import { useUpdateMeeting, useDeleteMeeting } from '@/hooks/useMeetingMutations'
+import {
+  useUpdateMeeting,
+  useDeleteMeeting,
+  useCreateMinutes,
+  useUpdateMinutes,
+  useCreateAgendaItem,
+  useUpdateAgendaItem,
+  useDeleteAgendaItem,
+  MeetingApiError,
+} from '@/hooks/useMeetingMutations'
 import { useCurrentUser } from '@/hooks/use-current-user'
 import { formatDateTime } from '@/lib/utils'
 
@@ -23,9 +32,20 @@ export default function MeetingDetailPage() {
   const { data, isLoading, error } = useMeeting(projectId as string | undefined, id as string | undefined)
   const { data: projectMeetings } = useMeetings(projectId as string | undefined)
   const deleteMeeting = useDeleteMeeting()
+  const createMinutes = useCreateMinutes()
+  const updateMinutes = useUpdateMinutes()
+  const createAgendaItem = useCreateAgendaItem()
+  const updateAgendaItem = useUpdateAgendaItem()
+  const deleteAgendaItem = useDeleteAgendaItem()
   const { user: currentUser } = useCurrentUser()
 
   const meeting = data
+
+  // Phase 7 Sprint B-2: surface 401/403/404 distinctly so users see a real
+  // explanation instead of "Failed to load meeting. Please try again."
+  const accessDenied =
+    error instanceof MeetingApiError &&
+    (error.status === 401 || error.status === 403 || error.status === 404)
 
   const handleDelete = async () => {
     if (!projectId || !id || !confirm('Are you sure you want to delete this meeting?')) {
@@ -37,7 +57,11 @@ export default function MeetingDetailPage() {
       router.push(`/projects/${projectId}/meetings`)
     } catch (err) {
       console.error('Failed to delete meeting:', err)
-      alert('Failed to delete meeting. Please try again.')
+      const msg =
+        err instanceof MeetingApiError
+          ? err.message
+          : 'Failed to delete meeting. Please try again.'
+      alert(msg)
     }
   }
 
@@ -49,6 +73,46 @@ export default function MeetingDetailPage() {
   const isAuthor = currentUser?.id === meeting?.authorId
   const isAdmin = currentUser?.isSystemAdmin ?? false
   const canModify = isAuthor || isAdmin
+
+  // Sprint B-2: minutes save handler. Creates on first save, patches on update.
+  const meetingId = typeof id === 'string' ? id : undefined
+  const handleSaveMinutes = async (content: string) => {
+    if (!meetingId) return
+    if (meeting?.minutes) {
+      await updateMinutes.mutateAsync({ meetingId, data: { content } })
+    } else {
+      await createMinutes.mutateAsync({ meetingId, data: { content } })
+    }
+  }
+
+  // Sprint B-2: agenda CRUD handlers. Each invalidates the meeting query
+  // (handled in the mutation hooks) which refetches and gives us fresh
+  // agenda + minutes + attendees in one shot.
+  const handleCreateAgendaItem = async (input: { title: string; notes?: string; duration?: number; position?: number }) => {
+    if (!meetingId) return
+    await createAgendaItem.mutateAsync({
+      meetingId,
+      data: {
+        title: input.title,
+        notes: input.notes,
+        duration: input.duration,
+        position: input.position ?? (meeting?.agenda?.length ?? 0),
+      },
+    })
+  }
+
+  const handleUpdateAgendaItem = async (
+    agendaId: string,
+    input: { title?: string; notes?: string | null; duration?: number | null; position?: number }
+  ) => {
+    if (!meetingId) return
+    await updateAgendaItem.mutateAsync({ meetingId, agendaId, data: input })
+  }
+
+  const handleDeleteAgendaItem = async (agendaId: string) => {
+    if (!meetingId || !confirm('Delete this agenda item?')) return
+    await deleteAgendaItem.mutateAsync({ meetingId, agendaId })
+  }
 
   if (!projectId || !id) {
     return (
@@ -62,6 +126,38 @@ export default function MeetingDetailPage() {
     return (
       <AuthenticatedLayout>
         <div className="text-center py-12 text-gray-500">Loading...</div>
+      </AuthenticatedLayout>
+    )
+  }
+
+  if (accessDenied) {
+    return (
+      <AuthenticatedLayout>
+        <div className="max-w-5xl mx-auto">
+          <div className="mb-6">
+            <Link
+              href={`/projects/${projectId}/meetings`}
+              className="text-sm text-gray-500 hover:text-gray-700"
+            >
+              ← Back to Meetings
+            </Link>
+          </div>
+          <div className="text-center py-12 bg-white rounded-xl border border-gray-200">
+            <div className="w-12 h-12 mx-auto mb-4 rounded-full bg-red-100 flex items-center justify-center">
+              <svg className="w-6 h-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
+              </svg>
+            </div>
+            <p className="text-gray-900 font-medium">
+              {(error as MeetingApiError).status === 404
+                ? 'Meeting not found'
+                : "You don't have access to this meeting"}
+            </p>
+            <p className="text-sm text-gray-500 mt-1">
+              {(error as MeetingApiError).message}
+            </p>
+          </div>
+        </div>
       </AuthenticatedLayout>
     )
   }
@@ -162,12 +258,22 @@ export default function MeetingDetailPage() {
 
             {/* Agenda Tab */}
             <TabsContent value="agenda" className="px-6 pb-6">
-              <MeetingAgendaTab agendaItems={meeting.agenda} />
+              <MeetingAgendaTab
+                agendaItems={meeting.agenda}
+                canModify={canModify}
+                onCreate={handleCreateAgendaItem}
+                onUpdate={handleUpdateAgendaItem}
+                onDelete={handleDeleteAgendaItem}
+              />
             </TabsContent>
 
             {/* Minutes Tab */}
             <TabsContent value="minutes" className="px-6 pb-6">
-              <MeetingMinutesTab minutes={meeting.minutes} />
+              <MeetingMinutesTab
+                minutes={meeting.minutes}
+                onSave={canModify ? handleSaveMinutes : undefined}
+                isLoading={createMinutes.isPending || updateMinutes.isPending}
+              />
             </TabsContent>
           </Tabs>
         </div>

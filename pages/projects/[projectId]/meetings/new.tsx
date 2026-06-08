@@ -85,7 +85,7 @@ export default function NewMeetingPage() {
         endTime: new Date(formData.endTime).toISOString(),
         location: formData.location || undefined,
         attendeeIds: attendeeIds.length > 0 ? attendeeIds : undefined,
-        authorId: 'self', // API overwrites with session.user.id
+        // Sprint B-2: authorId no longer sent — server derives from session.
       })
       // Navigate to the new meeting's detail page
       const newId = (created as { meeting?: { id: string }; id?: string })?.meeting?.id ??
