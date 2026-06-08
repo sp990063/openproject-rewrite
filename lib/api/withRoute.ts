@@ -309,11 +309,20 @@ export function withRoute<TBody = unknown, TQuery = QueryParams, TParams = PathP
       }
 
       // 4. Validation
+      // Note: bodySchema is only applied to body-mutating methods.
+      // Calling zod.parse(undefined) on a safe method like GET throws
+      // a ZodError that we used to surface as a 500. We whitelist the
+      // methods that legitimately carry a request body. (Phase 7
+      // staging QA for Sprint B-1 caught this pre-existing P0: 18
+      // routes with bodySchema + GET all 500'd on read. See
+      // .hermes/handover-notes/2026-06-08-openproject-rewrite-phase7-b1-complete.md
+      // for the full failure transcript.)
+      const BODY_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE'])
       let body = req.body as TBody
       let query = req.query as TQuery
       let params = req.query as TParams
 
-      if (config.bodySchema) {
+      if (config.bodySchema && BODY_METHODS.has(method)) {
         body = config.bodySchema.parse(req.body) as TBody
       }
       if (config.querySchema) {
