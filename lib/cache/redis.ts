@@ -6,8 +6,18 @@ import { Redis } from '@upstash/redis'
 
 // Initialize Redis client (uses UPSTASH_REDIS_URL + UPSTASH_REDIS_TOKEN)
 let redis: Redis | null = null
+let warnedNoRedis = false
 
-function getRedis(): Redis {
+function getRedis(): Redis | null {
+  if (!process.env.UPSTASH_REDIS_URL || !process.env.UPSTASH_REDIS_TOKEN) {
+    if (!warnedNoRedis) {
+      console.warn(
+        '[cache] Upstash Redis not configured (UPSTASH_REDIS_URL / UPSTASH_REDIS_TOKEN missing). Cache calls will no-op.'
+      )
+      warnedNoRedis = true
+    }
+    return null
+  }
   if (!redis) {
     redis = new Redis({
       url: process.env.UPSTASH_REDIS_URL!,
@@ -23,7 +33,9 @@ function getRedis(): Redis {
 
 export async function cacheGet<T>(key: string): Promise<T | null> {
   try {
-    const data = await getRedis().get<T>(key)
+    const client = getRedis()
+    if (!client) return null
+    const data = await client.get<T>(key)
     return data
   } catch (error) {
     console.warn(`[cache] Get failed for key ${key}:`, error)
@@ -37,7 +49,9 @@ export async function cacheSet<T>(
   ttlSeconds: number
 ): Promise<void> {
   try {
-    await getRedis().set(key, value, { ex: ttlSeconds })
+    const client = getRedis()
+    if (!client) return
+    await client.set(key, value, { ex: ttlSeconds })
   } catch (error) {
     console.warn(`[cache] Set failed for key ${key}:`, error)
   }
@@ -45,7 +59,9 @@ export async function cacheSet<T>(
 
 export async function cacheInvalidate(key: string): Promise<void> {
   try {
-    await getRedis().del(key)
+    const client = getRedis()
+    if (!client) return
+    await client.del(key)
   } catch (error) {
     console.warn(`[cache] Invalidate failed for key ${key}:`, error)
   }

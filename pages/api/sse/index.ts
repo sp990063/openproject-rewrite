@@ -23,6 +23,18 @@ export default async function handler(
     return res.status(401).json({ error: 'UNAUTHORIZED' })
   }
 
+  // Graceful 503 if Upstash env not configured (local dev without UPSTASH_REDIS_URL/TOKEN)
+  if (!process.env.UPSTASH_REDIS_URL || !process.env.UPSTASH_REDIS_TOKEN) {
+    res.setHeader('Content-Type', 'text/event-stream')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.setHeader('Connection', 'keep-alive')
+    res.flushHeaders?.()
+    res.write(
+      `data: ${JSON.stringify({ type: 'unavailable', reason: 'redis_not_configured' })}\n\n`
+    )
+    return res.end()
+  }
+
   // SSE headers
   res.setHeader('Content-Type', 'text/event-stream')
   res.setHeader('Cache-Control', 'no-cache')
