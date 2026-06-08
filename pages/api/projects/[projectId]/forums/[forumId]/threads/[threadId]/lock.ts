@@ -1,53 +1,54 @@
-import type { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
+// pages/api/projects/[projectId]/forums/[forumId]/threads/[threadId]/lock.ts
+// Phase 7 Sprint B-1: migrated from direct handler to withRoute HOF
+// (was: 65-line direct handler with inline getServerSession+401, see
+//  Phase 7 Sprint A4 3b26d89 for the auth-only fix). Behavior changes:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from admin-only check via session.user.isSystemAdmin
+//     (was: extra DB roundtrip via isSystemAdmin() helper)
+//   - Project-membership check now uses assertProjectMembershipWithProject
+//     (shared helper at ../../../_membership.ts) — defense in depth
+//   - Uniform error envelope via ApiError
 import { prisma } from '@/lib/prisma'
-import { authOptions } from '@/lib/auth'
-import { isSystemAdmin } from '@/lib/auth'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertProjectMembershipWithProject } from '../../../_membership'
 
+export default withRoute(
+  async ({ req, res, session, query }) => {
+    const projectId = query.projectId as string
+    const forumId = query.forumId as string
+    const threadId = query.threadId as string
+    if (!projectId) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Project ID is required')
+    }
+    if (!forumId) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Forum ID is required')
+    }
+    if (!threadId) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Thread ID is required')
+    }
+    const isAdmin = !!session.user.isSystemAdmin
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getServerSession(req, res, authOptions)
-  if (!session) {
-    return res.status(401).json({ error: 'UNAUTHORIZED' })
-  }
+    if (req.method !== 'POST') {
+      throw new ApiError(405, 'METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`)
+    }
 
-  const { projectId, forumId, threadId } = req.query
-  if (!projectId || typeof projectId !== 'string') {
-    return res.status(400).json({ error: 'INVALID_PROJECT_ID' })
-  }
-  if (!forumId || typeof forumId !== 'string') {
-    return res.status(400).json({ error: 'INVALID_FORUM_ID' })
-  }
-  if (!threadId || typeof threadId !== 'string') {
-    return res.status(400).json({ error: 'INVALID_THREAD_ID' })
-  }
+    // Project-membership check (defense in depth)
+    await assertProjectMembershipWithProject(projectId, session.user.id, isAdmin)
 
-  // Check project membership
-  const membership = await prisma.member.findUnique({
-    where: {
-      userId_projectId: { userId: session.user.id, projectId },
-    },
-  })
-  if (!membership) {
-    return res.status(403).json({ error: 'FORBIDDEN' })
-  }
+    // Admin only for lock/unlock
+    if (!isAdmin) {
+      throw new ApiError(403, 'ADMIN_ONLY', 'Only admins can lock/unlock threads')
+    }
 
-  // Admin only for lock/unlock
-  const isAdmin = await isSystemAdmin(session.user.id)
-  if (!isAdmin) {
-    return res.status(403).json({ error: 'ADMIN_ONLY', message: 'Only admins can lock/unlock threads' })
-  }
+    // Verify thread exists and belongs to forum
+    const existing = await prisma.forumThread.findFirst({
+      where: { id: threadId, forumId },
+    })
+    if (!existing) {
+      throw new ApiError(404, 'THREAD_NOT_FOUND', 'Thread not found')
+    }
 
-  // Verify thread exists and belongs to forum
-  const existing = await prisma.forumThread.findFirst({
-    where: { id: threadId, forumId },
-  })
-  if (!existing) {
-    return res.status(404).json({ error: 'THREAD_NOT_FOUND' })
-  }
-
-  // POST — toggle lock status
-  if (req.method === 'POST') {
+    // Toggle lock status
     const thread = await prisma.forumThread.update({
       where: { id: threadId },
       data: { isLocked: !existing.isLocked },
@@ -56,10 +57,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         forum: { select: { id: true, name: true, projectId: true } },
       },
     })
-
     return res.status(200).json({ thread, isLocked: thread.isLocked })
+  },
+  {
+    methods: ['POST'],
   }
-
-  res.setHeader('Allow', ['POST'])
-  return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' })
-}
+)

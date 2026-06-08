@@ -1,112 +1,84 @@
-import { NextApiRequest, NextApiResponse } from 'next'
+// pages/api/forums/[id]/index.ts
+// Phase 7 Sprint B-1: migrated from direct handler to withRoute HOF
+// (was: 112-line direct handler with inline getServerSession+401, see
+//  Phase 7 Sprint A4 3b26d89 for the auth-only fix). Behavior changes:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from project-membership check via assertForumProjectMembership
+//     for GET (was: 200 with data — non-members could read forum metadata)
+//   - 403 same for PATCH/DELETE (was: no RBAC, any logged-in user could
+//     modify/delete forums in projects they weren't members of)
+//   - Uniform error envelope via ApiError for all errors
 import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertForumProjectMembership } from '@/lib/auth/project'
 import { z } from 'zod'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 
 const updateForumSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().optional(),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Auth gate (Phase 7 Sprint A4 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
+export default withRoute(
+  async ({ req, res, session, body, query }) => {
+    const id = query.id as string
+    if (!id) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Forum ID is required')
+    }
+    const isAdmin = !!session.user.isSystemAdmin
 
-  const { query } = req
-  const id = query.id as string
-
-  if (!id) {
-    return res.status(400).json({ error: 'Forum ID is required' })
-  }
-
-  switch (req.method) {
-    case 'GET':
-      return getForum(req, res, id)
-    case 'PATCH':
-      return updateForum(req, res, id)
-    case 'DELETE':
-      return deleteForum(req, res, id)
-    default:
-      res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-}
-
-async function getForum(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const forum = await prisma.forum.findUnique({
-      where: { id },
-      include: {
-        author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        project: { select: { id: true, name: true, identifier: true } },
-        threads: {
+    switch (req.method) {
+      case 'GET': {
+        await assertForumProjectMembership(id, session.user.id, isAdmin)
+        const forum = await prisma.forum.findUnique({
+          where: { id },
           include: {
             author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-            _count: { select: { posts: true } },
+            project: { select: { id: true, name: true, identifier: true } },
+            threads: {
+              include: {
+                author: { select: { id: true, name: true, avatarUrl: true } },
+                _count: { select: { posts: true } },
+              },
+              orderBy: [{ isSticky: 'desc' }, { createdAt: 'desc' }],
+            },
+            _count: { select: { threads: true } },
           },
-          orderBy: [{ isSticky: 'desc' }, { createdAt: 'desc' }],
-        },
-        _count: { select: { threads: true } },
-      },
-    })
+        })
+        if (!forum) {
+          throw new ApiError(404, 'FORUM_NOT_FOUND', 'Forum not found')
+        }
+        return res.status(200).json(forum)
+      }
 
-    if (!forum) {
-      return res.status(404).json({ error: 'Forum not found' })
+      case 'PATCH': {
+        await assertForumProjectMembership(id, session.user.id, isAdmin)
+        const forum = await prisma.forum.update({
+          where: { id },
+          data: {
+            ...(body.name !== undefined && { name: body.name }),
+            ...(body.description !== undefined && { description: body.description }),
+          },
+          include: {
+            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            project: { select: { id: true, name: true, identifier: true } },
+          },
+        })
+        return res.status(200).json({ success: true, data: forum })
+      }
+
+      case 'DELETE': {
+        await assertForumProjectMembership(id, session.user.id, isAdmin)
+        await prisma.forum.delete({ where: { id } })
+        return res.status(204).end()
+      }
+
+      default:
+        throw new ApiError(405, 'METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`)
     }
-
-    return res.status(200).json(forum)
-  } catch (error) {
-    console.error('Error fetching forum:', error)
-    return res.status(500).json({ error: 'Failed to fetch forum' })
+  },
+  {
+    methods: ['GET', 'PATCH', 'DELETE'],
+    bodySchema: updateForumSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
-
-async function updateForum(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const data = updateForumSchema.parse(req.body)
-
-    const existing = await prisma.forum.findUnique({ where: { id } })
-    if (!existing) {
-      return res.status(404).json({ error: 'Forum not found' })
-    }
-
-    const forum = await prisma.forum.update({
-      where: { id },
-      data: {
-        ...(data.name !== undefined && { name: data.name }),
-        ...(data.description !== undefined && { description: data.description }),
-      },
-      include: {
-        author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        project: { select: { id: true, name: true, identifier: true } },
-      },
-    })
-
-    return res.status(200).json(forum)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
-    }
-    console.error('Error updating forum:', error)
-    return res.status(500).json({ error: 'Failed to update forum' })
-  }
-}
-
-async function deleteForum(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const forum = await prisma.forum.findUnique({ where: { id } })
-    if (!forum) {
-      return res.status(404).json({ error: 'Forum not found' })
-    }
-
-    await prisma.forum.delete({ where: { id } })
-    return res.status(204).end()
-  } catch (error) {
-    console.error('Error deleting forum:', error)
-    return res.status(500).json({ error: 'Failed to delete forum' })
-  }
-}
+)
