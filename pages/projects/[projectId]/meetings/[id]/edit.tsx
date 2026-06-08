@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useMeeting } from '@/hooks/useMeetings'
 import { useUpdateMeeting } from '@/hooks/useMeetingMutations'
+import { MeetingApiError } from '@/hooks/useMeetingMutations'
 import { formatDateTime } from '@/lib/utils'
 
 interface MeetingFormData {
@@ -94,7 +95,12 @@ export default function EditMeetingPage() {
       router.push(`/projects/${projectId}/meetings/${id}`)
     } catch (err) {
       console.error('Failed to update meeting:', err)
-      setErrors({ form: 'Failed to update meeting. Please try again.' })
+      // Sprint B-2: surface the server's structured message when available.
+      const msg =
+        err instanceof MeetingApiError
+          ? err.message
+          : 'Failed to update meeting. Please try again.'
+      setErrors({ form: msg })
     } finally {
       setIsSaving(false)
     }

@@ -1,59 +1,52 @@
-/**
- * POST /api/projects/[projectId]/meetings/[id]/rsvp
- *
- * Set the current user's RSVP for a meeting.
- * Body: { status: 'accepted' | 'declined' | 'tentative', comment?: string }
- *
- * Sprint 4 (Meetings) — adds RSVP endpoint not in pre-existing API.
- */
-import { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
-import { z } from 'zod'
-import { authOptions } from '@/lib/auth'
+// pages/api/projects/[projectId]/meetings/[id]/rsvp/index.ts
+// Phase 7 Sprint B-2 (audit follow-up): migrated from direct handler to
+// withRoute HOF. (was: 103-line direct handler with inline getServerSession
+// + 401, see Phase 7 Sprint A4 3b26d89 for the auth-only fix).
+//
+// Why this sprint fixes it:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from project-membership check via assertProjectMembership
+//     (was: no RBAC — any logged-in user could RSVP for any meeting,
+//     which is a privacy/state-integrity concern: setting
+//     accepted/declined on meetings you shouldn't see)
+//   - 404 from assertProjectMembership (was: 500 with console.error)
+//   - Uniform error envelope via ApiError for all errors
+//   - Body validation: withRoute bodySchema (was: inline try/parse +
+//     ad-hoc zod-error catch)
+//   - Meeting-belongs-to-project invariant preserved
+//
+// Note: this endpoint is currently unused by the frontend (no fetch URL
+// matches `/api/projects/.../meetings/[id]/rsvp` in hooks/ pages/
+// components/) — fixing it is defense-in-depth so the next caller
+// inherits RBAC + uniform envelope for free.
 import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertProjectMembership } from '@/lib/auth/project'
 import { emitActivity } from '@/lib/activity'
+import { z } from 'zod'
 
 const rsvpSchema = z.object({
   status: z.enum(['accepted', 'declined', 'tentative']),
   comment: z.string().max(500).optional(),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
-
-  const { query } = req
-  const projectId = query.projectId as string
-  const meetingId = query.id as string
-
-  if (!projectId || !meetingId) {
-    return res.status(400).json({ error: 'Project ID and Meeting ID are required' })
-  }
-
-  let body
-  try {
-    body = rsvpSchema.parse(req.body)
-  } catch (err) {
-    if (err instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: err.issues })
+export default withRoute(
+  async ({ req, res, session, body, query }) => {
+    const projectId = query.projectId as string
+    const meetingId = query.id as string
+    if (!projectId || !meetingId) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Project ID and Meeting ID are required')
     }
-    throw err
-  }
+    const isAdmin = !!session.user.isSystemAdmin
 
-  try {
+    await assertProjectMembership(projectId, session.user.id, isAdmin)
+
     const meeting = await prisma.meeting.findUnique({
       where: { id: meetingId },
       include: { attendees: { where: { userId: session.user.id } } },
     })
     if (!meeting || meeting.projectId !== projectId) {
-      return res.status(404).json({ error: 'Meeting not found' })
+      throw new ApiError(404, 'MEETING_NOT_FOUND', 'Meeting not found')
     }
 
     // Map API status → Prisma MeetingAttendee.response enum
@@ -62,14 +55,12 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
     let attendee
     if (meeting.attendees.length > 0) {
-      // Update existing attendee row
       attendee = await prisma.meetingAttendee.update({
         where: { id: meeting.attendees[0].id },
         data: { response, comment: body.comment ?? null },
         include: { user: { select: { id: true, name: true, email: true, avatarUrl: true } } },
       })
     } else {
-      // Create attendee row
       attendee = await prisma.meetingAttendee.create({
         data: {
           meetingId,
@@ -84,20 +75,21 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     await emitActivity({
       projectId,
       userId: session.user.id,
-      subjectType: 'meeting',
+      subjectType: 'meeting' as never,
       subjectId: meetingId,
-      action: 'rsvp',
+      action: 'rsvp' as never,
       reference: {
-        type: 'meeting',
+        type: 'meeting' as never,
         id: meetingId,
         subject: meeting.title,
-        response,
       },
     })
 
     return res.status(200).json({ attendee })
-  } catch (error) {
-    console.error('Error setting RSVP:', error)
-    return res.status(500).json({ error: 'Failed to set RSVP' })
+  },
+  {
+    methods: ['POST'],
+    bodySchema: rsvpSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
+)

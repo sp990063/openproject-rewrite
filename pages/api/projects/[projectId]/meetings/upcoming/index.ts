@@ -1,42 +1,54 @@
-/**
- * GET /api/projects/[projectId]/meetings/upcoming
- *
- * List upcoming meetings for a project (startTime >= now).
- * Used by the meetings list page and the project dashboard widget.
- *
- * Sprint 4 (Meetings) — adds the project-scoped "upcoming only" view
- * (the pre-existing list endpoint returns all meetings regardless of date).
- */
-import { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+// pages/api/projects/[projectId]/meetings/upcoming/index.ts
+// Phase 7 Sprint B-2 (audit follow-up): migrated from direct handler to
+// withRoute HOF. (was: direct handler with inline getServerSession +
+// 401, see Phase 7 Sprint A4 3b26d89 for the auth-only fix).
+//
+// Why this sprint fixes it:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from project-membership check via assertProjectMembership
+//     (was: no RBAC — any logged-in user could enumerate upcoming
+//     meetings + attendees PII in any project)
+//   - 404 from assertProjectMembership (was: 500 with console.error)
+//   - Uniform error envelope via ApiError for all errors
+//   - Method allow-list: enforced by withRoute's methods config
+//   - Response shape: direct array (consistent with the list endpoint
+//     after Sprint B-2 fix)
+//
+// Note: this endpoint is currently unused by the frontend (no fetch URL
+// matches `/api/projects/.../meetings/upcoming` in hooks/ pages/
+// components/) — fixing it is defense-in-depth.
 import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertProjectMembership } from '@/lib/auth/project'
+import { z } from 'zod'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
-    return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
+// Note: req.query is cast because Next.js Pages Router types the
+// path-params loosely — projectId comes from the URL but the HOF's
+// default QueryParams type is {string|string[]|undefined} which TS
+// would otherwise complain about for our typed access.
+const upcomingQuerySchema = z.object({
+  projectId: z.string(),
+  limit: z.string().regex(/^\d+$/).optional(),
+})
 
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ error: 'Unauthorized' })
-  }
+export default withRoute(
+  async ({ req, res, session, query }) => {
+    const projectId = query.projectId as string
+    if (!projectId) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Project ID is required')
+    }
+    const isAdmin = !!session.user.isSystemAdmin
 
-  const { query } = req
-  const projectId = query.projectId as string
-  const limitParam = (query.limit as string | undefined) ?? '10'
+    await assertProjectMembership(projectId, session.user.id, isAdmin)
 
-  if (!projectId) {
-    return res.status(400).json({ error: 'projectId is required' })
-  }
+    const limit = query.limit ? Math.min(100, parseInt(query.limit, 10)) : 10
+    const now = new Date()
 
-  const limit = Math.min(Math.max(parseInt(limitParam, 10) || 10, 1), 100)
-  const now = new Date()
-
-  try {
     const meetings = await prisma.meeting.findMany({
-      where: { projectId, startTime: { gte: now } },
+      where: {
+        projectId,
+        startTime: { gte: now },
+      },
       include: {
         author: { select: { id: true, name: true, email: true, avatarUrl: true } },
         attendees: {
@@ -48,9 +60,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       take: limit,
     })
 
-    return res.status(200).json({ meetings })
-  } catch (error) {
-    console.error('Error fetching upcoming meetings:', error)
-    return res.status(500).json({ error: 'Failed to fetch upcoming meetings' })
+    return res.status(200).json(meetings)
+  },
+  {
+    methods: ['GET'],
+    querySchema: upcomingQuerySchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
+)
