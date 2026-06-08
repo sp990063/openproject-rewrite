@@ -1,8 +1,19 @@
-import { NextApiRequest, NextApiResponse } from 'next'
+// pages/api/meetings/[id]/agenda/index.ts
+// Phase 7 Sprint B-2: migrated from direct handler to withRoute HOF
+// (was: 92-line direct handler with inline getServerSession+401, see
+//  Phase 7 Sprint A4 3b26d89 for the auth-only fix). Behavior changes:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from project-membership check via assertMeetingProjectMembership
+//     for GET/POST (was: 200/201 with data — non-members could read
+//     agenda + add agenda items to meetings in projects they weren't in)
+//   - 404 from assertMeetingProjectMembership (was: 500 with console.error)
+//   - Uniform error envelope via ApiError for all errors
+//   - Body validation: withRoute bodySchema (was: inline safeParse)
+//   - Method allow-list: enforced by withRoute's methods config
 import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertMeetingProjectMembership } from '@/lib/auth/project'
 import { z } from 'zod'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
 
 const createAgendaItemSchema = z.object({
   title: z.string().min(1).max(255),
@@ -11,82 +22,45 @@ const createAgendaItemSchema = z.object({
   position: z.number().int().min(0).optional().default(0),
 })
 
-const updateAgendaItemSchema = z.object({
-  title: z.string().min(1).max(255).optional(),
-  notes: z.string().nullable().optional(),
-  duration: z.number().int().positive().nullable().optional(),
-  position: z.number().int().min(0).optional(),
-})
-
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Auth gate (Phase 7 Sprint A4 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
-
-  const { query } = req
-  const id = query.id as string
-
-  if (!id) {
-    return res.status(400).json({ error: 'Meeting ID is required' })
-  }
-
-  switch (req.method) {
-    case 'GET':
-      return getAgendaItems(req, res, id)
-    case 'POST':
-      return createAgendaItem(req, res, id)
-    default:
-      res.setHeader('Allow', ['GET', 'POST'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-}
-
-async function getAgendaItems(req: NextApiRequest, res: NextApiResponse, meetingId: string) {
-  try {
-    const meeting = await prisma.meeting.findUnique({ where: { id: meetingId } })
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' })
+export default withRoute(
+  async ({ req, res, session, body, query }) => {
+    const id = query.id as string
+    if (!id) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Meeting ID is required')
     }
+    const isAdmin = !!session.user.isSystemAdmin
 
-    const items = await prisma.meetingAgendaItem.findMany({
-      where: { meetingId },
-      orderBy: { position: 'asc' },
-    })
+    switch (req.method) {
+      case 'GET': {
+        await assertMeetingProjectMembership(id, session.user.id, isAdmin)
+        const items = await prisma.meetingAgendaItem.findMany({
+          where: { meetingId: id },
+          orderBy: { position: 'asc' },
+        })
+        return res.status(200).json(items)
+      }
 
-    return res.status(200).json(items)
-  } catch (error) {
-    console.error('Error fetching agenda items:', error)
-    return res.status(500).json({ error: 'Failed to fetch agenda items' })
-  }
-}
+      case 'POST': {
+        await assertMeetingProjectMembership(id, session.user.id, isAdmin)
+        const item = await prisma.meetingAgendaItem.create({
+          data: {
+            meetingId: id,
+            title: body.title,
+            notes: body.notes || null,
+            duration: body.duration ?? null,
+            position: body.position,
+          },
+        })
+        return res.status(201).json(item)
+      }
 
-async function createAgendaItem(req: NextApiRequest, res: NextApiResponse, meetingId: string) {
-  try {
-    const data = createAgendaItemSchema.parse(req.body)
-
-    const meeting = await prisma.meeting.findUnique({ where: { id: meetingId } })
-    if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' })
+      default:
+        throw new ApiError(405, 'METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`)
     }
-
-    const item = await prisma.meetingAgendaItem.create({
-      data: {
-        meetingId,
-        title: data.title,
-        notes: data.notes || null,
-        duration: data.duration ?? null,
-        position: data.position,
-      },
-    })
-
-    return res.status(201).json(item)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
-    }
-    console.error('Error creating agenda item:', error)
-    return res.status(500).json({ error: 'Failed to create agenda item' })
+  },
+  {
+    methods: ['GET', 'POST'],
+    bodySchema: createAgendaItemSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
+)

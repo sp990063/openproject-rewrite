@@ -1,9 +1,23 @@
-import { NextApiRequest, NextApiResponse } from 'next'
+// pages/api/meetings/[id]/attendees/index.ts
+// Phase 7 Sprint B-2: migrated from direct handler to withRoute HOF
+// (was: 96-line direct handler with inline getServerSession+401, see
+//  Phase 7 Sprint A4 3b26d89 for the auth-only fix). Behavior changes:
+//   - 401 from withRoute's HOF (was: inline getServerSession)
+//   - 403 from project-membership check via assertMeetingProjectMembership
+//     for POST (was: 200 with data — non-members could rewrite the
+//     attendee list of any meeting, including injecting PII / user IDs
+//     they don't own)
+//   - 404 from assertMeetingProjectMembership (was: 500 with console.error)
+//   - Uniform error envelope via ApiError for all errors
+//   - Body validation: withRoute bodySchema (was: inline safeParse)
+//   - Method allow-list: enforced by withRoute's methods config
+//   - 409 conflict now uses the uniform {success:false,error:{code,message,
+//     details}} envelope (was: ad-hoc {error, conflicts} shape)
 import { prisma } from '@/lib/prisma'
-import { z } from 'zod'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertMeetingProjectMembership } from '@/lib/auth/project'
 import { checkMeetingConflict } from '@/lib/meeting-conflict'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { z } from 'zod'
 
 const setAttendeesSchema = z.object({
   attendees: z.array(
@@ -15,42 +29,31 @@ const setAttendeesSchema = z.object({
   ),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Auth gate (Phase 7 Sprint A4 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
+export default withRoute(
+  async ({ req, res, session, body, query }) => {
+    const id = query.id as string
+    if (!id) {
+      throw new ApiError(400, 'BAD_REQUEST', 'Meeting ID is required')
+    }
+    const isAdmin = !!session.user.isSystemAdmin
 
-  const { query } = req
-  const id = query.id as string
-
-  if (!id) {
-    return res.status(400).json({ error: 'Meeting ID is required' })
-  }
-
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-
-  try {
-    const data = setAttendeesSchema.parse(req.body)
+    // Membership check resolves meeting → project + asserts membership.
+    const projectId = await assertMeetingProjectMembership(id, session.user.id, isAdmin)
 
     const meeting = await prisma.meeting.findUnique({
       where: { id },
       include: { attendees: true },
     })
     if (!meeting) {
-      return res.status(404).json({ error: 'Meeting not found' })
+      throw new ApiError(404, 'MEETING_NOT_FOUND', 'Meeting not found')
     }
 
-    const attendeeIds = data.attendees.map((a) => a.userId)
+    const attendeeIds = body.attendees.map((a) => a.userId)
 
     // Check for conflicts with new attendees (excluding current meeting)
     if (attendeeIds.length > 0) {
       const conflict = await checkMeetingConflict({
-        projectId: meeting.projectId,
+        projectId,
         attendees: attendeeIds,
         startTime: meeting.startTime,
         endTime: meeting.endTime,
@@ -58,17 +61,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       })
       if (conflict.hasConflict) {
         return res.status(409).json({
-          error: 'Scheduling conflict detected',
-          conflicts: conflict.conflictingMeetings,
+          success: false,
+          error: {
+            code: 'CONFLICT',
+            message: 'Scheduling conflict detected',
+            details: { conflicts: conflict.conflictingMeetings },
+          },
         })
       }
     }
 
     // Replace all attendees
     await prisma.meetingAttendee.deleteMany({ where: { meetingId: id } })
-
     await prisma.meetingAttendee.createMany({
-      data: data.attendees.map((a) => ({
+      data: body.attendees.map((a) => ({
         meetingId: id,
         userId: a.userId,
         response: a.response,
@@ -86,11 +92,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     })
 
     return res.status(200).json(updated?.attendees ?? [])
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
-    }
-    console.error('Error setting attendees:', error)
-    return res.status(500).json({ error: 'Failed to set attendees' })
+  },
+  {
+    methods: ['POST'],
+    bodySchema: setAttendeesSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
+)
