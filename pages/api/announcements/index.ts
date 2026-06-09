@@ -13,11 +13,19 @@ const createAnnouncementSchema = z.object({
 })
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // Auth gate (B-3.0 P0 fix: GET was previously unauthenticated, leaking admin
+  // announcements to anonymous users). All announcements are global, so no
+  // project-membership check is required — just session presence.
+  const session = await getServerSession(req, res, authOptions)
+  if (!session?.user?.id) {
+    return res.status(401).json({ success: false, error: 'Unauthorized' })
+  }
+
   switch (req.method) {
     case 'GET':
-      return listActiveAnnouncements(req, res)
+      return listActiveAnnouncements(req, res, session.user.id)
     case 'POST':
-      return createAnnouncement(req, res)
+      return createAnnouncement(req, res, session.user.id)
     default:
       res.setHeader('Allow', ['GET', 'POST'])
       return res.status(405).json({ error: `Method ${req.method} not allowed` })
@@ -27,7 +35,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 /**
  * GET /api/announcements - List active announcements (checks date range)
  */
-async function listActiveAnnouncements(req: NextApiRequest, res: NextApiResponse) {
+async function listActiveAnnouncements(req: NextApiRequest, res: NextApiResponse, _userId: string) {
   try {
     const now = new Date()
 
@@ -51,18 +59,13 @@ async function listActiveAnnouncements(req: NextApiRequest, res: NextApiResponse
 }
 
 /**
- * POST /api/announcements - Create a new announcement (admin only)
+ * POST /api/announcements - Create a new announcement (admin only).
+ * Auth gate runs in the outer handler (B-3.0 P0 fix) so this body just
+ * needs the admin check.
  */
-async function createAnnouncement(req: NextApiRequest, res: NextApiResponse) {
+async function createAnnouncement(req: NextApiRequest, res: NextApiResponse, userId: string) {
   try {
-    // Auth gate (Phase 7 Sprint A4 P0 fix: replace broken x-user-id header
-    // spoofing vulnerability with real NextAuth session check)
-    const session = await getServerSession(req, res, authOptions)
-    if (!session?.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-
-    const isAdmin = await isSystemAdmin(session.user.id)
+    const isAdmin = await isSystemAdmin(userId)
     if (!isAdmin) {
       return res.status(403).json({ error: 'Forbidden - Admin only' })
     }
