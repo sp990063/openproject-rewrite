@@ -1,9 +1,12 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
 import { generateSlug } from '@/lib/markdown'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertWikiPageProjectMembership } from '@/lib/auth/project'
+
+const paramsSchema = z.object({
+  id: z.string(),
+})
 
 const updateWikiPageSchema = z.object({
   title: z.string().min(1).max(255).optional(),
@@ -11,92 +14,21 @@ const updateWikiPageSchema = z.object({
   parentId: z.string().nullish().optional(),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Auth gate (Phase 7 Sprint A4 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
+export default withRoute<z.infer<typeof updateWikiPageSchema>, unknown, z.input<typeof paramsSchema>>(
+  async ({ req, res, body, params, session }) => {
+    const { id } = params
 
-  const { query } = req
-  const id = query.id as string
+    // Project membership gate (B-3.1b: 403 if user is not a member of
+    // the project that owns this wiki page; 404 if page does not exist).
+    await assertWikiPageProjectMembership(
+      id,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
-  if (!id) {
-    return res.status(400).json({ error: 'Wiki page ID is required' })
-  }
-
-  switch (req.method) {
-    case 'GET':
-      return getWikiPage(req, res, id)
-    case 'PATCH':
-      return updateWikiPage(req, res, id)
-    case 'DELETE':
-      return deleteWikiPage(req, res, id)
-    default:
-      res.setHeader('Allow', ['GET', 'PATCH', 'DELETE'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-}
-
-async function getWikiPage(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const wikiPage = await prisma.wikiPage.findUnique({
-      where: { id },
-      include: {
-        author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        parent: { select: { id: true, title: true, slug: true } },
-        children: { select: { id: true, title: true, slug: true } },
-        project: { select: { id: true, name: true, identifier: true } },
-      },
-    })
-
-    if (!wikiPage) {
-      return res.status(404).json({ error: 'Wiki page not found' })
-    }
-
-    return res.status(200).json(wikiPage)
-  } catch (error) {
-    console.error('Error fetching wiki page:', error)
-    return res.status(500).json({ error: 'Failed to fetch wiki page' })
-  }
-}
-
-async function updateWikiPage(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const data = updateWikiPageSchema.parse(req.body)
-
-    // Get current page to know the current version and author
-    const currentPage = await prisma.wikiPage.findUnique({
-      where: { id },
-    })
-    if (!currentPage) {
-      return res.status(404).json({ error: 'Wiki page not found' })
-    }
-
-    // If title is changed, regenerate slug and check for conflicts
-    let newSlug = currentPage.slug
-    if (data.title) {
-      newSlug = generateSlug(data.title)
-      const existing = await prisma.wikiPage.findUnique({
-        where: { projectId_slug: { projectId: currentPage.projectId, slug: newSlug } },
-      })
-      if (existing && existing.id !== id) {
-        return res.status(400).json({ error: 'A wiki page with this title already exists in the project' })
-      }
-    }
-
-    const newVersion = currentPage.version + 1
-
-    // Update page + create new version in transaction
-    const wikiPage = await prisma.$transaction(async (tx) => {
-      const updated = await tx.wikiPage.update({
+    if (req.method === 'GET') {
+      const wikiPage = await prisma.wikiPage.findUnique({
         where: { id },
-        data: {
-          ...(data.title && { title: data.title, slug: newSlug }),
-          ...(data.content !== undefined && { content: data.content }),
-          ...(data.parentId !== undefined && { parentId: data.parentId === null ? null : data.parentId }),
-          version: newVersion,
-        },
         include: {
           author: { select: { id: true, name: true, email: true, avatarUrl: true } },
           parent: { select: { id: true, title: true, slug: true } },
@@ -104,48 +36,90 @@ async function updateWikiPage(req: NextApiRequest, res: NextApiResponse, id: str
           project: { select: { id: true, name: true, identifier: true } },
         },
       })
+      return res.status(200).json({ success: true, data: wikiPage })
+    }
 
-      // Create new version entry
-      await tx.wikiPageVersion.create({
-        data: {
-          wikiPageId: id,
-          content: data.content ?? currentPage.content,
-          authorId: currentPage.authorId,
-          version: newVersion,
-        },
+    if (req.method === 'PATCH') {
+      const currentPage = await prisma.wikiPage.findUnique({ where: { id } })
+      if (!currentPage) {
+        throw new ApiError(404, 'WIKI_PAGE_NOT_FOUND', 'Wiki page not found')
+      }
+
+      let newSlug = currentPage.slug
+      if (body.title) {
+        newSlug = generateSlug(body.title)
+        const existing = await prisma.wikiPage.findUnique({
+          where: { projectId_slug: { projectId: currentPage.projectId, slug: newSlug } },
+        })
+        if (existing && existing.id !== id) {
+          throw new ApiError(
+            409,
+            'WIKI_PAGE_EXISTS',
+            'A wiki page with this title already exists in the project'
+          )
+        }
+      }
+
+      const newVersion = currentPage.version + 1
+
+      const wikiPage = await prisma.$transaction(async (tx) => {
+        const updated = await tx.wikiPage.update({
+          where: { id },
+          data: {
+            ...(body.title && { title: body.title, slug: newSlug }),
+            ...(body.content !== undefined && { content: body.content }),
+            ...(body.parentId !== undefined && { parentId: body.parentId === null ? null : body.parentId }),
+            version: newVersion,
+          },
+          include: {
+            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            parent: { select: { id: true, title: true, slug: true } },
+            children: { select: { id: true, title: true, slug: true } },
+            project: { select: { id: true, name: true, identifier: true } },
+          },
+        })
+
+        await tx.wikiPageVersion.create({
+          data: {
+            wikiPageId: id,
+            content: body.content ?? currentPage.content,
+            authorId: currentPage.authorId,
+            version: newVersion,
+          },
+        })
+
+        return updated
       })
 
-      return updated
-    })
-
-    return res.status(200).json(wikiPage)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
+      return res.status(200).json({ success: true, data: wikiPage })
     }
-    console.error('Error updating wiki page:', error)
-    return res.status(500).json({ error: 'Failed to update wiki page' })
+
+    if (req.method === 'DELETE') {
+      const page = await prisma.wikiPage.findUnique({
+        where: { id },
+        include: { _count: { select: { children: true } } },
+      })
+      if (!page) {
+        throw new ApiError(404, 'WIKI_PAGE_NOT_FOUND', 'Wiki page not found')
+      }
+      if (page._count.children > 0) {
+        throw new ApiError(
+          400,
+          'WIKI_PAGE_HAS_CHILDREN',
+          'Cannot delete a wiki page that has child pages. Delete or move the children first.'
+        )
+      }
+
+      await prisma.wikiPage.delete({ where: { id } })
+      return res.status(204).end()
+    }
+
+    return undefined
+  },
+  {
+    methods: ['GET', 'PATCH', 'DELETE'],
+    bodySchema: updateWikiPageSchema,
+    paramsSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
-
-async function deleteWikiPage(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    // Check if page exists
-    const page = await prisma.wikiPage.findUnique({
-      where: { id },
-      include: { _count: { select: { children: true } } },
-    })
-    if (!page) {
-      return res.status(404).json({ error: 'Wiki page not found' })
-    }
-    if (page._count.children > 0) {
-      return res.status(400).json({ error: 'Cannot delete a wiki page that has child pages. Delete or move the children first.' })
-    }
-
-    await prisma.wikiPage.delete({ where: { id } })
-    return res.status(204).end()
-  } catch (error) {
-    console.error('Error deleting wiki page:', error)
-    return res.status(500).json({ error: 'Failed to delete wiki page' })
-  }
-}
+)

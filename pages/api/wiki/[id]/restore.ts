@@ -1,93 +1,78 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertWikiPageProjectMembership } from '@/lib/auth/project'
+
+const paramsSchema = z.object({
+  id: z.string(),
+})
 
 const restoreSchema = z.object({
   version: z.number().int().positive(),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Auth gate (Phase 7 Sprint A4 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
+export default withRoute<z.infer<typeof restoreSchema>, unknown, z.input<typeof paramsSchema>>(
+  async ({ req, res, body, params, session }) => {
+    const { id } = params
 
-  const { query } = req
-  const id = query.id as string
+    // Project membership gate (B-3.1b).
+    await assertWikiPageProjectMembership(
+      id,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
-  if (!id) {
-    return res.status(400).json({ error: 'Wiki page ID is required' })
-  }
+    if (req.method === 'POST') {
+      const page = await prisma.wikiPage.findUnique({ where: { id } })
+      if (!page) {
+        throw new ApiError(404, 'WIKI_PAGE_NOT_FOUND', 'Wiki page not found')
+      }
 
-  switch (req.method) {
-    case 'POST':
-      return restoreVersion(req, res, id)
-    default:
-      res.setHeader('Allow', ['POST'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-}
+      const targetVersion = await prisma.wikiPageVersion.findFirst({
+        where: { wikiPageId: id, version: body.version },
+      })
+      if (!targetVersion) {
+        throw new ApiError(404, 'WIKI_VERSION_NOT_FOUND', `Version ${body.version} not found`)
+      }
 
-async function restoreVersion(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    const { version } = restoreSchema.parse(req.body)
+      const newVersion = page.version + 1
 
-    // Get the wiki page
-    const page = await prisma.wikiPage.findUnique({
-      where: { id },
-    })
-    if (!page) {
-      return res.status(404).json({ error: 'Wiki page not found' })
-    }
+      const wikiPage = await prisma.$transaction(async (tx) => {
+        const updated = await tx.wikiPage.update({
+          where: { id },
+          data: {
+            content: targetVersion.content,
+            version: newVersion,
+          },
+          include: {
+            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            parent: { select: { id: true, title: true, slug: true } },
+            children: { select: { id: true, title: true, slug: true } },
+            project: { select: { id: true, name: true, identifier: true } },
+          },
+        })
 
-    // Find the version to restore
-    const targetVersion = await prisma.wikiPageVersion.findFirst({
-      where: { wikiPageId: id, version },
-    })
-    if (!targetVersion) {
-      return res.status(404).json({ error: `Version ${version} not found` })
-    }
+        await tx.wikiPageVersion.create({
+          data: {
+            wikiPageId: id,
+            content: targetVersion.content,
+            authorId: page.authorId,
+            version: newVersion,
+          },
+        })
 
-    const newVersion = page.version + 1
-
-    // Update page content to the target version and create a new version entry
-    const wikiPage = await prisma.$transaction(async (tx) => {
-      const updated = await tx.wikiPage.update({
-        where: { id },
-        data: {
-          content: targetVersion.content,
-          version: newVersion,
-        },
-        include: {
-          author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-          parent: { select: { id: true, title: true, slug: true } },
-          children: { select: { id: true, title: true, slug: true } },
-          project: { select: { id: true, name: true, identifier: true } },
-        },
+        return updated
       })
 
-      // Create new version entry recording the restore
-      await tx.wikiPageVersion.create({
-        data: {
-          wikiPageId: id,
-          content: targetVersion.content,
-          authorId: page.authorId,
-          version: newVersion,
-        },
-      })
-
-      return updated
-    })
-
-    return res.status(200).json(wikiPage)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
+      return res.status(200).json({ success: true, data: wikiPage })
     }
-    console.error('Error restoring wiki page version:', error)
-    return res.status(500).json({ error: 'Failed to restore wiki page version' })
+
+    return undefined
+  },
+  {
+    methods: ['POST'],
+    bodySchema: restoreSchema,
+    paramsSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
+)

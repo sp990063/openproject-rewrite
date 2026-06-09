@@ -1,32 +1,26 @@
-import { NextApiRequest, NextApiResponse } from 'next'
+import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { withRoute } from '@/lib/api/withRoute'
+import { assertWikiPageBySlugProjectMembership } from '@/lib/auth/project'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Auth gate (Phase 7 Sprint A4 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
+const querySchema = z.object({
+  slug: z.string(),
+})
 
-  if (req.method !== 'GET') {
-    res.setHeader('Allow', ['GET'])
-    return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
+export default withRoute<unknown, z.input<typeof querySchema>, unknown>(
+  async ({ req, res, query, session }) => {
+    if (req.method !== 'GET') return undefined
 
-  try {
-    const { slug } = req.query
+    // Project membership gate (B-3.1b). Slug is project-scoped, so we
+    // resolve slug -> pageId -> projectId, then assert membership.
+    await assertWikiPageBySlugProjectMembership(
+      query.slug,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
-    if (!slug || typeof slug !== 'string') {
-      return res.status(400).json({ error: 'Wiki page slug is required' })
-    }
-
-    // Find wiki page by slug
-    // Note: We need to find by slug since we don't know projectId from the URL alone
-    // The client will call with projectId as query param for filtering
     const wikiPage = await prisma.wikiPage.findFirst({
-      where: { slug },
+      where: { slug: query.slug },
       include: {
         author: { select: { id: true, name: true, email: true, avatarUrl: true } },
         parent: { select: { id: true, title: true, slug: true } },
@@ -35,13 +29,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
     })
 
-    if (!wikiPage) {
-      return res.status(404).json({ error: 'Wiki page not found' })
-    }
-
-    return res.status(200).json(wikiPage)
-  } catch (error) {
-    console.error('Error fetching wiki page by slug:', error)
-    return res.status(500).json({ error: 'Failed to fetch wiki page' })
+    return res.status(200).json({ success: true, data: wikiPage })
+  },
+  {
+    methods: ['GET'],
+    querySchema,
   }
-}
+)
