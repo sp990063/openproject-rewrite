@@ -284,3 +284,56 @@ export async function assertWikiPageBySlugProjectMembership(
   await assertProjectMembership(page.projectId, userId, isSystemAdmin)
   return { projectId: page.projectId, pageId: page.id }
 }
+
+/**
+ * Resolve a documentId to its parent projectId and assert the user is a
+ * member of that project. Returns the projectId on success.
+ *
+ * For routes like `/api/documents/[id]` that only carry the documentId
+ * in the URL — we still need project-membership to gate access.
+ */
+export async function assertDocumentProjectMembership(
+  documentId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!documentId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Document ID is required')
+  }
+  const document = await prisma.document.findUnique({
+    where: { id: documentId },
+    select: { projectId: true },
+  })
+  if (!document) {
+    throw new ApiError(404, 'DOCUMENT_NOT_FOUND', 'Document not found')
+  }
+  await assertProjectMembership(document.projectId, userId, isSystemAdmin)
+  return document.projectId
+}
+
+/**
+ * Resolve a documentFolderId to its parent projectId and assert the
+ * user is a member of that project. Returns the projectId on success.
+ *
+ * Folders are project-scoped (DocumentFolder.projectId). The URL
+ * `/api/documents/folders/[id]` only carries folderId, so we resolve
+ * folderId -> projectId -> membership check.
+ */
+export async function assertFolderProjectMembership(
+  folderId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!folderId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Folder ID is required')
+  }
+  const folder = await prisma.documentFolder.findUnique({
+    where: { id: folderId },
+    select: { projectId: true },
+  })
+  if (!folder) {
+    throw new ApiError(404, 'FOLDER_NOT_FOUND', 'Folder not found')
+  }
+  await assertProjectMembership(folder.projectId, userId, isSystemAdmin)
+  return folder.projectId
+}
