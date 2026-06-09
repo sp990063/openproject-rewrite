@@ -228,3 +228,59 @@ export async function assertMeetingAttendeeProjectMembership(
   await assertProjectMembership(attendee.meeting.projectId, userId, isSystemAdmin)
   return attendee.meeting.projectId
 }
+
+
+/**
+ * Resolve a wikiPageId to its parent projectId and assert the user is a
+ * member of that project. Returns the projectId on success.
+ *
+ * For routes like `/api/wiki/[id]` that only carry the wikiPageId in
+ * the URL — we still need project-membership to gate access.
+ */
+export async function assertWikiPageProjectMembership(
+  wikiPageId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!wikiPageId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Wiki page ID is required')
+  }
+  const page = await prisma.wikiPage.findUnique({
+    where: { id: wikiPageId },
+    select: { projectId: true },
+  })
+  if (!page) {
+    throw new ApiError(404, 'WIKI_PAGE_NOT_FOUND', 'Wiki page not found')
+  }
+  await assertProjectMembership(page.projectId, userId, isSystemAdmin)
+  return page.projectId
+}
+
+/**
+ * Resolve a wiki slug to its parent projectId and assert the user is a
+ * member of that project. Returns { projectId, pageId } on success.
+ *
+ * Slugs are unique per project (projectId_slug) but the URL route only
+ * carries `slug` — we still need to verify the user is a member of the
+ * project that owns the page. If the slug is ambiguous across projects
+ * the first match is used and the caller (forums or pages UI) should
+ * also pass projectId via query to disambiguate.
+ */
+export async function assertWikiPageBySlugProjectMembership(
+  slug: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<{ projectId: string; pageId: string }> {
+  if (!slug) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Wiki page slug is required')
+  }
+  const page = await prisma.wikiPage.findFirst({
+    where: { slug },
+    select: { id: true, projectId: true },
+  })
+  if (!page) {
+    throw new ApiError(404, 'WIKI_PAGE_NOT_FOUND', 'Wiki page not found')
+  }
+  await assertProjectMembership(page.projectId, userId, isSystemAdmin)
+  return { projectId: page.projectId, pageId: page.id }
+}
