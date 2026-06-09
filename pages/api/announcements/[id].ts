@@ -1,8 +1,11 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { getServerSession } from 'next-auth'
-import { prisma } from '@/lib/prisma'
-import { authOptions, isSystemAdmin } from '@/lib/auth'
 import { z } from 'zod'
+import { prisma } from '@/lib/prisma'
+import { isSystemAdmin } from '@/lib/auth'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+
+const paramsSchema = z.object({
+  id: z.string(),
+})
 
 const updateAnnouncementSchema = z.object({
   content: z.string().min(1).optional(),
@@ -12,94 +15,61 @@ const updateAnnouncementSchema = z.object({
   endsAt: z.string().datetime().optional().nullable(),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  const { id } = req.query
-
-  if (!id || typeof id !== 'string') {
-    return res.status(400).json({ error: 'Invalid announcement ID' })
-  }
-
-  switch (req.method) {
-    case 'PUT':
-      return updateAnnouncement(req, res, id)
-    case 'DELETE':
-      return deleteAnnouncement(req, res, id)
-    default:
-      res.setHeader('Allow', ['PUT', 'DELETE'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-}
-
 /**
- * PUT /api/announcements/[id] - Update an announcement (admin only)
+ * PUT    /api/announcements/[id]  — Update an announcement (admin only).
+ * DELETE /api/announcements/[id]  — Delete an announcement (admin only).
  */
-async function updateAnnouncement(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    // Auth gate (Phase 7 Sprint A4 P0 fix: replace broken x-user-id header
-    // spoofing vulnerability with real NextAuth session check)
-    const session = await getServerSession(req, res, authOptions)
-    if (!session?.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
+export default withRoute<z.infer<typeof updateAnnouncementSchema>, unknown, z.input<typeof paramsSchema>>(
+  async ({ req, res, body, params, session }) => {
+    const { id } = params
 
+    // Admin check (B-3.3: kept in the handler body for the same reason
+    // as the index route — isSystemAdmin() is async and the HOF rbac
+    // callback is sync).
     const isAdmin = await isSystemAdmin(session.user.id)
     if (!isAdmin) {
-      return res.status(403).json({ error: 'Forbidden - Admin only' })
+      throw new ApiError(403, 'FORBIDDEN', 'Admin only')
     }
 
-    const body = updateAnnouncementSchema.parse(req.body)
-
-    const announcement = await prisma.announcement.update({
-      where: { id },
-      data: {
-        ...(body.content !== undefined && { content: body.content }),
-        ...(body.type !== undefined && { type: body.type }),
-        ...(body.dismissible !== undefined && { dismissible: body.dismissible }),
-        ...(body.startsAt !== undefined && { startsAt: body.startsAt ? new Date(body.startsAt) : null }),
-        ...(body.endsAt !== undefined && { endsAt: body.endsAt ? new Date(body.endsAt) : null }),
-      },
-    })
-
-    return res.status(200).json(announcement)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: error.issues })
+    if (req.method === 'PUT') {
+      try {
+        const announcement = await prisma.announcement.update({
+          where: { id },
+          data: {
+            ...(body.content !== undefined && { content: body.content }),
+            ...(body.type !== undefined && { type: body.type }),
+            ...(body.dismissible !== undefined && { dismissible: body.dismissible }),
+            ...(body.startsAt !== undefined && { startsAt: body.startsAt ? new Date(body.startsAt) : null }),
+            ...(body.endsAt !== undefined && { endsAt: body.endsAt ? new Date(body.endsAt) : null }),
+          },
+        })
+        return res.status(200).json({ success: true, data: announcement })
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('Record to update not found')) {
+          throw new ApiError(404, 'ANNOUNCEMENT_NOT_FOUND', 'Announcement not found')
+        }
+        throw error
+      }
     }
-    if (error instanceof Error && error.message.includes('Record to update not found')) {
-      return res.status(404).json({ error: 'Announcement not found' })
+
+    if (req.method === 'DELETE') {
+      try {
+        await prisma.announcement.delete({ where: { id } })
+        return res.status(204).end()
+      } catch (error) {
+        if (error instanceof Error && error.message.includes('Record to delete')) {
+          throw new ApiError(404, 'ANNOUNCEMENT_NOT_FOUND', 'Announcement not found')
+        }
+        throw error
+      }
     }
-    console.error('Error updating announcement:', error)
-    return res.status(500).json({ error: 'Internal server error' })
+
+    return undefined
+  },
+  {
+    methods: ['PUT', 'DELETE'],
+    bodySchema: updateAnnouncementSchema,
+    paramsSchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
-
-/**
- * DELETE /api/announcements/[id] - Delete an announcement (admin only)
- */
-async function deleteAnnouncement(req: NextApiRequest, res: NextApiResponse, id: string) {
-  try {
-    // Auth gate (Phase 7 Sprint A4 P0 fix: replace broken x-user-id header
-    // spoofing vulnerability with real NextAuth session check)
-    const session = await getServerSession(req, res, authOptions)
-    if (!session?.user?.id) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-
-    const isAdmin = await isSystemAdmin(session.user.id)
-    if (!isAdmin) {
-      return res.status(403).json({ error: 'Forbidden - Admin only' })
-    }
-
-    await prisma.announcement.delete({
-      where: { id },
-    })
-
-    return res.status(204).send(null)
-  } catch (error) {
-    if (error instanceof Error && error.message.includes('Record to delete')) {
-      return res.status(404).json({ error: 'Announcement not found' })
-    }
-    console.error('Error deleting announcement:', error)
-    return res.status(500).json({ error: 'Internal server error' })
-  }
-}
+)
