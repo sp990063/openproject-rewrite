@@ -1,8 +1,12 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { prisma } from '@/lib/prisma'
 import { z } from 'zod'
-import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertProjectMembership } from '@/lib/auth/project'
+
+const querySchema = z.object({
+  projectId: z.string().optional(),
+  folderId: z.string().optional(),
+})
 
 const createDocumentSchema = z.object({
   projectId: z.string(),
@@ -12,74 +16,82 @@ const createDocumentSchema = z.object({
   authorId: z.string(),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  // Auth gate (Phase 7 Sprint A4 P0 fix)
-  const session = await getServerSession(req, res, authOptions)
-  if (!session?.user) {
-    return res.status(401).json({ success: false, error: 'Unauthorized' })
-  }
+export default withRoute<z.infer<typeof createDocumentSchema>, z.input<typeof querySchema>, unknown>(
+  async ({ req, res, body, query, session }) => {
+    if (req.method === 'GET') {
+      // GET /api/documents?projectId=...&folderId=...
+      // RBAC: filter by projectId, then assert membership.
+      // If projectId is provided in the query, require membership; if not,
+      // we'll only return documents in projects the user is a member of
+      // (which requires an additional query — keep it simple for now:
+      // require projectId on the way in).
+      if (!query.projectId) {
+        throw new ApiError(
+          400,
+          'BAD_REQUEST',
+          'projectId query parameter is required'
+        )
+      }
+      await assertProjectMembership(
+        query.projectId,
+        session.user.id,
+        !!session.user.isSystemAdmin
+      )
 
-  switch (req.method) {
-    case 'GET':
-      return getDocuments(req, res)
-    case 'POST':
-      return createDocument(req, res)
-    default:
-      res.setHeader('Allow', ['GET', 'POST'])
-      return res.status(405).json({ error: `Method ${req.method} not allowed` })
-  }
-}
+      const where: { projectId?: string; folderId?: string | null } = {
+        projectId: query.projectId,
+      }
+      if (query.folderId !== undefined) {
+        where.folderId = query.folderId === '' ? null : query.folderId
+      }
 
-async function getDocuments(req: NextApiRequest, res: NextApiResponse) {
-  try {
-    const { projectId, folderId } = req.query
+      const documents = await prisma.document.findMany({
+        where,
+        include: {
+          author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+          project: { select: { id: true, name: true, identifier: true } },
+          folder: { select: { id: true, name: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+      })
 
-    const where: { projectId?: string; folderId?: string | null } = {}
-    if (projectId) where.projectId = projectId as string
-    if (folderId !== undefined) where.folderId = folderId === '' ? null : folderId as string
-
-    const documents = await prisma.document.findMany({
-      where,
-      include: {
-        author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        project: { select: { id: true, name: true, identifier: true } },
-        folder: { select: { id: true, name: true } },
-      },
-      orderBy: { createdAt: 'desc' },
-    })
-
-    return res.status(200).json(documents)
-  } catch (error) {
-    console.error('Error fetching documents:', error)
-    return res.status(500).json({ error: 'Failed to fetch documents' })
-  }
-}
-
-async function createDocument(req: NextApiRequest, res: NextApiResponse) {
-  try {
-    const data = createDocumentSchema.parse(req.body)
-
-    const document = await prisma.document.create({
-      data: {
-        projectId: data.projectId,
-        title: data.title,
-        description: data.description,
-        folderId: data.folderId ?? null,
-        authorId: data.authorId,
-      },
-      include: {
-        author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        project: { select: { id: true, name: true, identifier: true } },
-        folder: { select: { id: true, name: true } },
-      },
-    })
-
-    return res.status(201).json(document)
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json({ error: 'Validation failed', details: error.issues })
+      return res.status(200).json({ success: true, data: documents })
     }
-    console.error('Error creating document:', error)
-    return res.status(500).json({ error: 'Failed to create document' })
+
+    if (req.method === 'POST') {
+      // POST /api/documents — body carries projectId, assert membership
+      // before creating the document. This is the only chance to gate
+      // access because the URL is just /api/documents.
+      await assertProjectMembership(
+        body.projectId,
+        session.user.id,
+        !!session.user.isSystemAdmin
+      )
+
+      const document = await prisma.document.create({
+        data: {
+          projectId: body.projectId,
+          title: body.title,
+          description: body.description,
+          folderId: body.folderId ?? null,
+          authorId: body.authorId,
+        },
+        include: {
+          author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+          project: { select: { id: true, name: true, identifier: true } },
+          folder: { select: { id: true, name: true } },
+        },
+      })
+
+      return res.status(201).json({ success: true, data: document })
+    }
+
+    return undefined
+  },
+  {
+    methods: ['GET', 'POST'],
+    bodySchema: createDocumentSchema,
+    querySchema,
+    skipSentryFor: (err) => err instanceof z.ZodError,
   }
-}
+)

@@ -24,7 +24,15 @@ const mocks = vi.hoisted(() => {
     projectFindUnique: vi.fn(),
     memberFindUnique: vi.fn(),
     documentFindUnique: vi.fn(),
+    documentFindMany: vi.fn(),
+    documentCreate: vi.fn(),
+    documentUpdate: vi.fn(),
+    documentDelete: vi.fn(),
     documentFolderFindUnique: vi.fn(),
+    documentFolderFindMany: vi.fn(),
+    documentFolderCreate: vi.fn(),
+    documentFolderUpdate: vi.fn(),
+    documentFolderDelete: vi.fn(),
   }
 })
 
@@ -32,8 +40,20 @@ vi.mock('@/lib/prisma', () => ({
   prisma: {
     project: { findUnique: mocks.projectFindUnique },
     member: { findUnique: mocks.memberFindUnique },
-    document: { findUnique: mocks.documentFindUnique },
-    documentFolder: { findUnique: mocks.documentFolderFindUnique },
+    document: {
+      findUnique: mocks.documentFindUnique,
+      findMany: mocks.documentFindMany,
+      create: mocks.documentCreate,
+      update: mocks.documentUpdate,
+      delete: mocks.documentDelete,
+    },
+    documentFolder: {
+      findUnique: mocks.documentFolderFindUnique,
+      findMany: mocks.documentFolderFindMany,
+      create: mocks.documentFolderCreate,
+      update: mocks.documentFolderUpdate,
+      delete: mocks.documentFolderDelete,
+    },
   },
 }))
 
@@ -147,6 +167,243 @@ describe('assertFolderProjectMembership helper', () => {
     const result = await assertFolderProjectMembership(c(2), 'admin1', true)
     expect(result).toBe(c(1))
     expect(mocks.projectFindUnique).not.toHaveBeenCalled()
+    expect(mocks.memberFindUnique).not.toHaveBeenCalled()
+  })
+})
+
+
+
+
+// ─── Route integration tests (added in B-3.2b route-migration commit) ──
+import type { NextApiRequest, NextApiResponse } from 'next'
+
+
+vi.mock('@upstash/redis', () => {
+  const mockRedis = { get: vi.fn(), set: vi.fn(), del: vi.fn() }
+  return { Redis: { fromEnv: () => mockRedis } }
+})
+vi.mock('@upstash/ratelimit', () => {
+  const MockRatelimit = vi.fn().mockImplementation(() => ({
+    limit: vi.fn().mockResolvedValue({ success: true, limit: 100, remaining: 99, reset: 0 }),
+  }))
+  return { Ratelimit: MockRatelimit }
+})
+
+let mockSession: { user: { id: string; isSystemAdmin?: boolean } } | null = {
+  user: { id: mocks.c(3) },
+}
+vi.mock('next-auth', () => ({
+  getServerSession: vi.fn(() => Promise.resolve(mockSession)),
+}))
+vi.mock('@/lib/auth', () => ({
+  authOptions: {},
+  isSystemAdmin: vi.fn(() => Promise.resolve(false)),
+}))
+
+
+// Import routes AFTER all mocks
+import documentsRoute from '@/pages/api/documents'
+import documentIdRoute from '@/pages/api/documents/[id]'
+import foldersRoute from '@/pages/api/documents/folders'
+import folderIdRoute from '@/pages/api/documents/folders/[id]'
+
+function makeRouteMocks(
+  method: string,
+  body?: Record<string, unknown>,
+  query?: Record<string, string | string[]>
+) {
+  const mockReq = {
+    method,
+    body: body ?? {},
+    query: query ?? {},
+    headers: {},
+    socket: { remoteAddress: '127.0.0.1' },
+  } as unknown as NextApiRequest
+
+  let statusCode = 200
+  let jsonData: unknown = null
+  const mockRes = {
+    statusCode: 200,
+    status: (code: number) => {
+      statusCode = code
+      return mockRes
+    },
+    json: (data: unknown) => {
+      jsonData = data
+      return mockRes
+    },
+    setHeader: () => mockRes,
+    end: vi.fn(),
+  } as unknown as NextApiResponse & { end: ReturnType<typeof vi.fn> }
+
+  return {
+    req: mockReq,
+    res: mockRes,
+    getStatus: () => statusCode,
+    getJson: () => jsonData,
+  }
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  mockSession = { user: { id: c(3) } }
+})
+
+describe('401 — unauthenticated requests blocked by withRoute HOF', () => {
+  beforeEach(() => {
+    mockSession = null
+  })
+
+  it('GET /api/documents', async () => {
+    const m = makeRouteMocks('GET', undefined, { projectId: c(1) })
+    await documentsRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(401)
+  })
+
+  it('POST /api/documents', async () => {
+    const m = makeRouteMocks('POST', { projectId: c(1), title: 'x', authorId: 'u1' })
+    await documentsRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(401)
+  })
+
+  it('GET /api/documents/[id]', async () => {
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await documentIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(401)
+  })
+
+  it('GET /api/documents/folders', async () => {
+    const m = makeRouteMocks('GET', undefined, { projectId: c(1) })
+    await foldersRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(401)
+  })
+
+  it('GET /api/documents/folders/[id]', async () => {
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await folderIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(401)
+  })
+})
+
+describe('403 — authenticated non-member is denied', () => {
+  beforeEach(() => {
+    mockSession = { user: { id: 'u1' } }
+    mocks.projectFindUnique.mockResolvedValue({ id: c(1) })
+    mocks.memberFindUnique.mockResolvedValue(null)
+  })
+
+  it('GET /api/documents?projectId=...', async () => {
+    const m = makeRouteMocks('GET', undefined, { projectId: c(1) })
+    await documentsRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(403)
+  })
+
+  it('POST /api/documents (body projectId) — non-member', async () => {
+    const m = makeRouteMocks('POST', {
+      projectId: c(1), title: 'x', authorId: 'u1',
+    })
+    await documentsRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(403)
+  })
+
+  it('GET /api/documents/[id] — non-member of owning project', async () => {
+    mocks.documentFindUnique.mockResolvedValue({ projectId: c(1) })
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await documentIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(403)
+  })
+
+  it('GET /api/documents/folders/[id] — non-member', async () => {
+    mocks.documentFolderFindUnique.mockResolvedValue({ projectId: c(1) })
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await folderIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(403)
+  })
+})
+
+describe('404 — document / folder not found', () => {
+  beforeEach(() => {
+    mockSession = { user: { id: 'u1' } }
+    mocks.projectFindUnique.mockResolvedValue({ id: c(1) })
+    mocks.memberFindUnique.mockResolvedValue({ id: 'm1' })
+  })
+
+  it('GET /api/documents/[id] — document not found', async () => {
+    mocks.documentFindUnique.mockResolvedValue(null)
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await documentIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(404)
+    expect(m.getJson()).toMatchObject({
+      success: false,
+      error: { code: 'DOCUMENT_NOT_FOUND' },
+    })
+  })
+
+  it('GET /api/documents/folders/[id] — folder not found', async () => {
+    mocks.documentFolderFindUnique.mockResolvedValue(null)
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await folderIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(404)
+  })
+})
+
+describe('400 — bad request', () => {
+  beforeEach(() => {
+    mockSession = { user: { id: 'u1' } }
+    mocks.projectFindUnique.mockResolvedValue({ id: c(1) })
+    mocks.memberFindUnique.mockResolvedValue({ id: 'm1' })
+  })
+
+  it('GET /api/documents without projectId', async () => {
+    const m = makeRouteMocks('GET')
+    await documentsRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(400)
+  })
+
+  it('GET /api/documents/folders without projectId', async () => {
+    const m = makeRouteMocks('GET')
+    await foldersRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(400)
+  })
+})
+
+describe('200 — happy path with project member', () => {
+  beforeEach(() => {
+    mockSession = { user: { id: 'u1' } }
+    mocks.projectFindUnique.mockResolvedValue({ id: c(1) })
+    mocks.memberFindUnique.mockResolvedValue({ id: 'm1' })
+  })
+
+  it('GET /api/documents?projectId=...', async () => {
+    mocks.documentFindMany.mockResolvedValue([{ id: c(2) }])
+    const m = makeRouteMocks('GET', undefined, { projectId: c(1) })
+    await documentsRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(200)
+    expect(m.getJson()).toMatchObject({ success: true, data: [{ id: c(2) }] })
+  })
+
+  it('GET /api/documents/[id]', async () => {
+    const document = { id: c(2), projectId: c(1), title: 'X' }
+    mocks.documentFindUnique
+      .mockResolvedValueOnce({ projectId: c(1) })
+      .mockResolvedValueOnce(document)
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await documentIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(200)
+    expect(m.getJson()).toMatchObject({ success: true, data: document })
+  })
+})
+
+describe('200 — system admin bypasses project membership check', () => {
+  it('GET /api/documents/[id] with isSystemAdmin=true', async () => {
+    mockSession = { user: { id: 'admin1', isSystemAdmin: true } }
+    const document = { id: c(2), projectId: c(1), title: 'X' }
+    mocks.documentFindUnique
+      .mockResolvedValueOnce({ projectId: c(1) })
+      .mockResolvedValueOnce(document)
+    const m = makeRouteMocks('GET', undefined, { id: c(2) })
+    await documentIdRoute(m.req, m.res)
+    expect(m.getStatus()).toBe(200)
     expect(mocks.memberFindUnique).not.toHaveBeenCalled()
   })
 })
