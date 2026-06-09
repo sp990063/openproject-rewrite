@@ -337,3 +337,31 @@ export async function assertFolderProjectMembership(
   await assertProjectMembership(folder.projectId, userId, isSystemAdmin)
   return folder.projectId
 }
+
+/**
+ * Resolve a workPackageId to its parent projectId and assert the user
+ * is a member of that project. Returns the projectId on success.
+ *
+ * For routes like `/api/work-packages/[id]/watch` that only carry the
+ * workPackageId in the URL — we still need project-membership to gate
+ * access. Otherwise an attacker who knows or can guess a WP ID could
+ * enumerate the WP's existence and add themselves as a watcher.
+ */
+export async function assertWorkPackageProjectMembership(
+  workPackageId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!workPackageId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Work package ID is required')
+  }
+  const workPackage = await prisma.workPackage.findUnique({
+    where: { id: workPackageId },
+    select: { projectId: true },
+  })
+  if (!workPackage) {
+    throw new ApiError(404, 'WORK_PACKAGE_NOT_FOUND', 'Work package not found')
+  }
+  await assertProjectMembership(workPackage.projectId, userId, isSystemAdmin)
+  return workPackage.projectId
+}
