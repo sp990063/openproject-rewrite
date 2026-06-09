@@ -365,3 +365,35 @@ export async function assertWorkPackageProjectMembership(
   await assertProjectMembership(workPackage.projectId, userId, isSystemAdmin)
   return workPackage.projectId
 }
+
+/**
+ * Resolve a workPackageRelationId to its parent projectId and assert
+ * the user is a member of that project. Returns the projectId on
+ * success.
+ *
+ * For routes like `/api/relations/[id]` that only carry the relationId
+ * in the URL — we still need project-membership to gate access.
+ * Otherwise any logged-in user could read or modify any relation in
+ * the system by guessing or enumerating IDs.
+ *
+ * A relation joins two work packages (from/to) that always live in the
+ * same project, so resolving `relation.from.projectId` is sufficient.
+ */
+export async function assertRelationProjectMembership(
+  relationId: string,
+  userId: string,
+  isSystemAdmin: boolean
+): Promise<string> {
+  if (!relationId) {
+    throw new ApiError(400, 'BAD_REQUEST', 'Relation ID is required')
+  }
+  const relation = await prisma.workPackageRelation.findUnique({
+    where: { id: relationId },
+    select: { from: { select: { projectId: true } } },
+  })
+  if (!relation) {
+    throw new ApiError(404, 'RELATION_NOT_FOUND', 'Work package relation not found')
+  }
+  await assertProjectMembership(relation.from.projectId, userId, isSystemAdmin)
+  return relation.from.projectId
+}
