@@ -31,16 +31,20 @@ export default withRoute(
     switch (req.method) {
       case 'GET': {
         await assertThreadProjectMembership(threadId, session.user.id, isAdmin)
+        // Phase 3 Sprint 7 FM-2 fix: don't leak author.email to every
+        // project member. The frontend renders name + avatarUrl, not
+        // email, so this is a pure PII trim. (POST list below already
+        // excludes email — keep the responses identical.)
         const thread = await prisma.forumThread.findUnique({
           where: { id: threadId },
           include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, avatarUrl: true } },
             forum: {
               select: { id: true, name: true, project: { select: { id: true, name: true, identifier: true } } },
             },
             posts: {
               include: {
-                author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+                author: { select: { id: true, name: true, avatarUrl: true } },
               },
               orderBy: { createdAt: 'asc' },
             },
@@ -55,6 +59,20 @@ export default withRoute(
 
       case 'PATCH': {
         await assertThreadProjectMembership(threadId, session.user.id, isAdmin)
+        // Phase 3 Sprint 7 FM-4 fix: only the author or a system admin
+        // can edit a thread. Previously any project member could flip
+        // isLocked/isSticky on any thread — letting random members grief
+        // by locking popular threads.
+        const existingThread = await prisma.forumThread.findUnique({
+          where: { id: threadId },
+          select: { authorId: true },
+        })
+        if (!existingThread) {
+          throw new ApiError(404, 'THREAD_NOT_FOUND', 'Thread not found')
+        }
+        if (!isAdmin && existingThread.authorId !== session.user.id) {
+          throw new ApiError(403, 'FORBIDDEN', 'Only the thread author or a system admin can edit this thread')
+        }
         const thread = await prisma.forumThread.update({
           where: { id: threadId },
           data: {
@@ -63,7 +81,7 @@ export default withRoute(
             ...(body.isLocked !== undefined && { isLocked: body.isLocked }),
           },
           include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, avatarUrl: true } },
             forum: { select: { id: true, name: true } },
           },
         })
