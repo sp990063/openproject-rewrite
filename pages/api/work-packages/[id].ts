@@ -164,16 +164,7 @@ async function updateWorkPackage(req: NextApiRequest, res: NextApiResponse, id: 
     }
 
     if (Object.keys(changes).length > 0) {
-      await prisma.activity.create({
-        data: {
-          workPackageId: id,
-          userId: workPackage.authorId,
-          action: 'updated',
-          details: JSON.parse(JSON.stringify(changes)),
-        },
-      })
-
-      // Emit unified activity
+      // Emit unified activity (the only canonical Activity insert path — DB-14)
       await emitActivity({
         projectId: workPackage.projectId,
         userId: workPackage.authorId,

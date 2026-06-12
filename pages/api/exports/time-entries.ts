@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
+import { isSystemAdmin } from '@/lib/auth'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   if (req.method !== 'GET') {
@@ -15,12 +16,26 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json({ error: 'You must be logged in' })
     }
 
+    const viewerId = session.user.id
+    const admin = await isSystemAdmin(viewerId)
     const { projectId, userId, from, to, format } = req.query
 
     // Build where clause
     const where: Record<string, unknown> = { deletedAt: null }
 
-    if (userId) where.userId = userId as string
+    // Phase 3 Sprint 2 (RBAC-19 high): default scope is "self-only" if the
+    // caller supplies no projectId and no userId. Otherwise an
+    // authenticated user could enumerate every time entry in the system.
+    // When projectId IS supplied, non-admin viewers must be a member of
+    // that project (membership check below). When userId !== viewerId
+    // is supplied, only system admins may export.
+    if (!userId && !projectId) {
+      where.userId = viewerId
+    } else if (userId && userId !== viewerId && !admin) {
+      return res.status(403).json({ error: 'Cannot export other users\' time entries' })
+    } else if (userId) {
+      where.userId = userId as string
+    }
     if (projectId) {
       where.workPackage = { projectId: projectId as string }
     }

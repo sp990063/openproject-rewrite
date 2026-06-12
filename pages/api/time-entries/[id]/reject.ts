@@ -1,53 +1,70 @@
-import { NextApiRequest, NextApiResponse } from 'next'
-import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
 import { z } from 'zod'
-import { successResponse, errorResponse } from '@/lib/api-response'
+import { prisma } from '@/lib/prisma'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertProjectMembership } from '@/lib/auth/project'
 
-const rejectSchema = z.object({
-  reason: z.string().optional(),
+const paramsSchema = z.object({
+  id: z.string().min(1),
 })
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    return res.status(405).json(errorResponse('METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`))
-  }
+const bodySchema = z.object({
+  reason: z.string().max(2000).optional(),
+})
 
-  const { query } = req
-  const id = query.id as string
+/**
+ * POST /api/time-entries/[id]/reject
+ *
+ * Phase 3 Sprint 3 fix — addresses API-80 / API-191.
+ *
+ * Previously: any authenticated user could reject any submitted time
+ * entry. Same CRITICAL RBAC gap as approve.ts (API-78).
+ *
+ * Now: migrated to `withRoute` HOF, gated by `assertProjectMembership`
+ * on the entry's work-package's project.
+ */
+export default withRoute<
+  z.input<typeof bodySchema>,
+  unknown,
+  z.input<typeof paramsSchema>
+>(
+  async ({ params, req, res, session, body }) => {
+    const { id } = params
 
-  if (!id) {
-    return res.status(400).json(errorResponse('BAD_REQUEST', 'Time entry ID is required'))
-  }
-
-  try {
-    const session = await getServerSession(req, res, authOptions)
-    if (!session?.user) {
-      return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
-    }
-
-    const data = rejectSchema.parse(req.body)
-
-    const existing = await prisma.timeEntry.findUnique({ where: { id } })
+    // Fetch the entry (need projectId via workPackage for membership check)
+    const existing = await prisma.timeEntry.findUnique({
+      where: { id },
+      include: {
+        workPackage: { select: { projectId: true } },
+      },
+    })
     if (!existing) {
-      return res.status(404).json(errorResponse('NOT_FOUND', 'Time entry not found'))
+      throw new ApiError(404, 'TIME_ENTRY_NOT_FOUND', 'Time entry not found')
     }
+
+    // Project membership gate (API-80).
+    await assertProjectMembership(
+      existing.workPackage.projectId,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
     if (existing.status !== 'submitted') {
-      return res.status(400).json(errorResponse('INVALID_STATUS', 'You can only reject submitted time entries'))
+      throw new ApiError(
+        400,
+        'INVALID_STATUS',
+        'You can only reject submitted time entries'
+      )
     }
 
     const entry = await prisma.timeEntry.update({
       where: { id },
       data: {
         status: 'rejected',
-        rejectReason: data.reason ?? null,
+        rejectReason: body.reason ?? null,
       },
       include: {
         workPackage: {
-          select: { id: true, subject: true, estimatedHours: true }
+          select: { id: true, subject: true, estimatedHours: true },
         },
         user: { select: { id: true, name: true } },
         approver: { select: { id: true, name: true } },
@@ -63,12 +80,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       deletedAt: entry.deletedAt?.toISOString() ?? null,
     }
 
-    return res.status(200).json(successResponse({ entry: entryWithStrings }))
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return res.status(400).json(errorResponse('VALIDATION_ERROR', 'Validation failed', error.issues))
-    }
-    console.error('Error rejecting time entry:', error)
-    return res.status(500).json(errorResponse('INTERNAL_ERROR', 'Failed to reject time entry'))
+    return res.status(200).json({
+      success: true,
+      data: { entry: entryWithStrings },
+    })
+  },
+  {
+    methods: ['POST'],
+    paramsSchema,
+    bodySchema,
+    auditLog: (ctx) => {
+      console.log(
+        `[audit] ${ctx.method} ${ctx.path} -> ${ctx.statusCode} (${ctx.duration}ms) user=${ctx.userId} action=TIME_ENTRY_REJECT`
+      )
+    },
   }
-}
+)

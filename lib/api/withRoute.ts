@@ -371,7 +371,15 @@ export function withRoute<TBody = unknown, TQuery = QueryParams, TParams = PathP
         Sentry.captureException(err, { tags: { requestId, method, path } })
       }
       const body = formatErrorBody(err)
-      const status = err instanceof ApiError ? err.status : 500
+      // Map ZodError (from bodySchema/querySchema/paramsSchema) to HTTP 400
+      // instead of the default 500. ApiError keeps its declared status; any
+      // other unknown error falls back to 500.
+      const status =
+        err instanceof ApiError
+          ? err.status
+          : err instanceof ZodError
+            ? 400
+            : 500
       logApiRequest({
         method,
         path,

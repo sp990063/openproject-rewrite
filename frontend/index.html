@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<!--
+  frontend/index.html — SPA entry point (β architecture)
+  ─────────────────────────────────────────────────────────
+  All β pages mount inside <div id="app">. Router (router.js) listens
+  to popstate and intercepts in-app <a href="/..."> clicks to do
+  client-side nav without full page reload.
+
+  Note: CSS is imported as ES modules from app.js (Vite bundles them).
+  This avoids the SPA-fallback 500 on /styles/*.css that occurs with
+  Vite's default appType: 'spa' serving strategy.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>OpenProject</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+  </head>
+  <body>
+    <!-- Bootstrap splash: shown until app.js mounts the layout shell.
+         Provides graceful no-JS fallback message. -->
+    <div id="app">
+      <div class="op-splash" role="status" aria-live="polite">
+        <div class="op-splash__logo">OpenProject</div>
+        <div class="op-splash__hint">Loading…</div>
+      </div>
+    </div>
+    <noscript>
+      <div class="op-no-js">
+        This app requires JavaScript. The
+        <a href="/login">login page</a> works without JS.
+      </div>
+    </noscript>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

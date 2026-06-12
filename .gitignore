@@ -42,6 +42,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
+# vanilla frontend (ui_revamp) build artifacts
+frontend/dist/
+.vite/
+
+# Playwright
+playwright-report/
+test-results/
+playwright/.cache/
+
 /generated/prisma
 
 # agent-skills (full clone from addyosmani/agent-skills)

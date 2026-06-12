@@ -60,6 +60,8 @@ model User {
   // Phase 5: Notification relations
   notifications        Notification[]
   notificationSettings NotificationSetting[]
+  // Phase 7 Sprint 4 (DB-4): EmailQueue FK — trace recipient, dedup, cascade on delete
+  emailQueueEntries    EmailQueue[]          @relation("EmailQueueUser")
 
   // Phase 5: Watched work packages
   watchedWorkPackages WorkPackage[] @relation("WorkPackageWatchers")
@@ -378,9 +380,11 @@ model BudgetLine {
   workPackageId String?
   createdAt     DateTime     @default(now())
   budget        Budget       @relation(fields: [budgetId], references: [id], onDelete: Cascade)
-  workPackage   WorkPackage? @relation(fields: [workPackageId], references: [id])
+  // DB-7: onDelete: SetNull — budget lines survive WP deletion (soft-delete semantics)
+  workPackage   WorkPackage? @relation(fields: [workPackageId], references: [id], onDelete: SetNull)
 
   @@index([budgetId])
+  @@index([workPackageId])
   @@map("budget_lines")
 }
 
@@ -802,11 +806,9 @@ model Notification {
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId, read])
   @@index([userId, createdAt])
-  @@map("notifications")
   @@index([userId, read, createdAt])
-
+  @@map("notifications")
 }
 
 model NotificationSetting {
@@ -835,8 +837,13 @@ model EmailQueue {
   lastError   String?
   scheduledAt DateTime
   processedAt DateTime?
+  // DB-4: FK to recipient user — SetNull preserves the audit trail when a user
+  // is hard-deleted (GDPR path). Worker can filter by userId for per-user dedup.
+  userId      String?
+  user        User?     @relation("EmailQueueUser", fields: [userId], references: [id], onDelete: SetNull)
 
   @@index([processedAt, scheduledAt, attempts])
+  @@index([userId])
   @@map("email_queue")
 }
 
@@ -1064,14 +1071,17 @@ model WebhookDelivery {
   id           String    @id @default(cuid())
   webhookId    String
   event        String
-  payload      String // JSON string
+  payload      String    @db.Text // JSON string — can be tens of KB (DB-3)
   status       String // 'pending' | 'success' | 'failed'
   responseCode Int?
-  responseBody String?
+  responseBody String?   @db.Text // remote error page can be arbitrarily large (DB-3)
   attempts     Int       @default(0)
   nextRetry    DateTime?
   createdAt    DateTime  @default(now())
   webhook      Webhook   @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, status])
+  @@map("webhook_deliveries")
 }
 
 // ============================================

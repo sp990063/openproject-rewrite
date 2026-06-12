@@ -1,37 +1,56 @@
-import { NextApiRequest, NextApiResponse } from 'next'
+import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { getServerSession } from 'next-auth/next'
-import { authOptions } from '@/lib/auth'
-import { successResponse, errorResponse } from '@/lib/api-response'
+import { withRoute, ApiError } from '@/lib/api/withRoute'
+import { assertProjectMembership } from '@/lib/auth/project'
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', ['POST'])
-    return res.status(405).json(errorResponse('METHOD_NOT_ALLOWED', `Method ${req.method} not allowed`))
-  }
+const paramsSchema = z.object({
+  id: z.string().min(1),
+})
 
-  const { query } = req
-  const id = query.id as string
+/**
+ * POST /api/time-entries/[id]/approve
+ *
+ * Phase 3 Sprint 3 fix — addresses API-78 / API-80.
+ *
+ * Previously: any authenticated user could approve any submitted time
+ * entry (the file's own comment admitted "should be restricted by
+ * project membership"). Unrestricted approval of payroll/timesheet
+ * data — CRITICAL RBAC gap.
+ *
+ * Now: migrated to `withRoute` HOF, gated by `assertProjectMembership`
+ * on the entry's work-package's project. The user must be a member of
+ * the project (or a system admin) to approve the entry.
+ */
+export default withRoute<unknown, unknown, z.input<typeof paramsSchema>>(
+  async ({ params, req, res, session }) => {
+    const { id } = params
 
-  if (!id) {
-    return res.status(400).json(errorResponse('BAD_REQUEST', 'Time entry ID is required'))
-  }
-
-  try {
-    const session = await getServerSession(req, res, authOptions)
-    if (!session?.user) {
-      return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
-    }
-
-    // Check if user is a manager (in a real app, check for manager role in the project)
-    // For now, we'll allow any logged-in user to approve (should be restricted by project membership)
-    const existing = await prisma.timeEntry.findUnique({ where: { id } })
+    // Fetch the entry (need projectId via workPackage for membership check)
+    const existing = await prisma.timeEntry.findUnique({
+      where: { id },
+      include: {
+        workPackage: { select: { projectId: true } },
+      },
+    })
     if (!existing) {
-      return res.status(404).json(errorResponse('NOT_FOUND', 'Time entry not found'))
+      throw new ApiError(404, 'TIME_ENTRY_NOT_FOUND', 'Time entry not found')
     }
+
+    // Project membership gate (API-78). Resolve the entry's project
+    // via workPackage.projectId, then assert membership. System admins
+    // bypass the check.
+    await assertProjectMembership(
+      existing.workPackage.projectId,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
     if (existing.status !== 'submitted') {
-      return res.status(400).json(errorResponse('INVALID_STATUS', 'You can only approve submitted time entries'))
+      throw new ApiError(
+        400,
+        'INVALID_STATUS',
+        'You can only approve submitted time entries'
+      )
     }
 
     const entry = await prisma.timeEntry.update({
@@ -43,7 +62,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       },
       include: {
         workPackage: {
-          select: { id: true, subject: true, estimatedHours: true }
+          select: { id: true, subject: true, estimatedHours: true },
         },
         user: { select: { id: true, name: true } },
         approver: { select: { id: true, name: true } },
@@ -59,9 +78,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       deletedAt: entry.deletedAt?.toISOString() ?? null,
     }
 
-    return res.status(200).json(successResponse({ entry: entryWithStrings }))
-  } catch (error) {
-    console.error('Error approving time entry:', error)
-    return res.status(500).json(errorResponse('INTERNAL_ERROR', 'Failed to approve time entry'))
+    return res.status(200).json({
+      success: true,
+      data: { entry: entryWithStrings },
+    })
+  },
+  {
+    methods: ['POST'],
+    paramsSchema,
+    // Audit log entry written with a security-relevant action tag.
+    auditLog: (ctx) => {
+      console.log(
+        `[audit] ${ctx.method} ${ctx.path} -> ${ctx.statusCode} (${ctx.duration}ms) user=${ctx.userId} action=TIME_ENTRY_APPROVE`
+      )
+    },
   }
-}
+)

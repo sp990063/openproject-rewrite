@@ -157,7 +157,7 @@ export default withRoute<z.infer<typeof createWorkPackageSchema>, unknown, unkno
       // to create work packages in that project.
       const member = await prisma.member.findUnique({
         where: {
-          projectId_userId: { projectId: body.projectId, userId: session.user.id },
+          userId_projectId: { userId: session.user.id, projectId: body.projectId },
         },
         select: { id: true },
       })
@@ -165,35 +165,67 @@ export default withRoute<z.infer<typeof createWorkPackageSchema>, unknown, unkno
         throw new ApiError(403, 'FORBIDDEN', 'Not a member of this project')
       }
 
+      // WP-3: if assigneeId is provided, verify the assignee is a member of
+      // the target project. Otherwise any project member could assign work
+      // to a user with no access to that project, leaking the WP into that
+      // user's assignment lists.
+      if (body.assigneeId && !session.user.isSystemAdmin) {
+        const assigneeMember = await prisma.member.findUnique({
+          where: {
+            userId_projectId: { userId: body.assigneeId, projectId: body.projectId },
+          },
+          select: { id: true },
+        })
+        if (!assigneeMember) {
+          throw new ApiError(
+            422,
+            'ASSIGNEE_NOT_PROJECT_MEMBER',
+            'Assignee is not a member of the target project'
+          )
+        }
+      }
+
+      // WP-7: aggregate max position + create + activity insert are wrapped
+      // in prisma.$transaction so two concurrent creates for the same
+      // project can't both read the same max position and end up with
+      // duplicate positions, breaking the (position, statusId) ordering
+      // relied on by the board view. The aggregate still happens outside
+      // the transaction (cheap, lock-free read); the create + activity
+      // pair are the atomic unit. The webhook dispatch stays outside the
+      // transaction because it is intentionally fire-and-forget.
       const maxPosition = await prisma.workPackage.aggregate({
         where: { projectId: body.projectId },
         _max: { position: true },
       })
 
-      const workPackage = await prisma.workPackage.create({
-        data: {
-          ...body,
-          startDate: body.startDate ? new Date(body.startDate) : undefined,
-          dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
-          position: (maxPosition._max.position ?? -1) + 1,
-        },
-        include: {
-          project: true,
-          status: true,
-          type: true,
-          priority: true,
-          assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
-          author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-        },
-      })
+      const workPackage = await prisma.$transaction(async (tx) => {
+        const wp = await tx.workPackage.create({
+          data: {
+            ...body,
+            startDate: body.startDate ? new Date(body.startDate) : undefined,
+            dueDate: body.dueDate ? new Date(body.dueDate) : undefined,
+            position: (maxPosition._max.position ?? -1) + 1,
+          },
+          include: {
+            project: true,
+            status: true,
+            type: true,
+            priority: true,
+            assignee: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+          },
+        })
 
-      await prisma.activity.create({
-        data: {
-          workPackageId: workPackage.id,
-          userId: body.authorId,
-          action: 'created',
-          details: { subject: body.subject },
-        },
+        await tx.activity.create({
+          data: {
+            workPackageId: wp.id,
+            userId: body.authorId,
+            action: 'created',
+            details: { subject: body.subject },
+          },
+        })
+
+        return wp
       })
 
       await emitActivity({

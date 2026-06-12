@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
+import { assertProjectMembership } from '@/lib/auth/project'
 import { successResponse, errorResponse } from '@/lib/api-response'
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
@@ -23,10 +24,23 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
     }
 
-    const existing = await prisma.timeEntry.findUnique({ where: { id } })
+    // Phase 3 Sprint 2 (RBAC-8 high): also resolve projectId and gate on
+    // project membership. Ownership-only check (next block) prevents
+    // submitting other users' entries but allows cross-project submission
+    // if you own an entry whose WP lives in a project you can't see.
+    const existing = await prisma.timeEntry.findUnique({
+      where: { id },
+      include: { workPackage: { select: { projectId: true } } },
+    })
     if (!existing) {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Time entry not found'))
     }
+
+    await assertProjectMembership(
+      existing.workPackage.projectId,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
     // Only allow owner to submit their own pending entry
     if (existing.userId !== session.user.id) {

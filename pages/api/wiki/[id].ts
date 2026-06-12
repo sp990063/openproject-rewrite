@@ -1,6 +1,6 @@
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { generateSlug } from '@/lib/markdown'
+import { generateSlug, uniqueSlug } from '@/lib/slug'
 import { withRoute, ApiError } from '@/lib/api/withRoute'
 import { assertWikiPageProjectMembership } from '@/lib/auth/project'
 
@@ -47,20 +47,56 @@ export default withRoute<z.infer<typeof updateWikiPageSchema>, unknown, z.input<
 
       let newSlug = currentPage.slug
       if (body.title) {
-        newSlug = generateSlug(body.title)
-        const existing = await prisma.wikiPage.findUnique({
-          where: { projectId_slug: { projectId: currentPage.projectId, slug: newSlug } },
-        })
-        if (existing && existing.id !== id) {
+        const baseSlug = generateSlug(body.title)
+        // Auto-uniquify within the project, excluding the current page.
+        const existingSlugs = (
+          await prisma.wikiPage.findMany({
+            where: { projectId: currentPage.projectId, NOT: { id } },
+            select: { slug: true },
+          })
+        ).map((p) => p.slug)
+        newSlug = uniqueSlug(baseSlug, existingSlugs)
+      }
+
+      // WIKI-7: parentId cycle check — prevent infinite hierarchy loops.
+      if (body.parentId !== undefined && body.parentId !== null) {
+        if (body.parentId === id) {
           throw new ApiError(
-            409,
-            'WIKI_PAGE_EXISTS',
-            'A wiki page with this title already exists in the project'
+            400,
+            'WIKI_PARENT_CYCLE',
+            'A wiki page cannot be its own parent'
           )
+        }
+        // Walk up the ancestor chain of the proposed parent and reject
+        // if we encounter the current page (would form a cycle).
+        let cursor: string | null = body.parentId
+        const seen = new Set<string>()
+        while (cursor) {
+          if (seen.has(cursor)) break // defensive: also stop on existing cycles
+          seen.add(cursor)
+          if (cursor === id) {
+            throw new ApiError(
+              400,
+              'WIKI_PARENT_CYCLE',
+              'Cannot set parent: would create a cycle in the wiki page hierarchy'
+            )
+          }
+          const ancestor: { parentId: string | null } | null =
+            await prisma.wikiPage.findUnique({
+              where: { id: cursor },
+              select: { parentId: true },
+            })
+          cursor = ancestor?.parentId ?? null
         }
       }
 
-      const newVersion = currentPage.version + 1
+      // WIKI-9: only increment version + create a version row when content
+      // actually changes. Title/parentId edits should NOT bump the version.
+      const isContentUpdate =
+        body.content !== undefined && body.content !== currentPage.content
+      const newVersion = isContentUpdate
+        ? currentPage.version + 1
+        : currentPage.version
 
       const wikiPage = await prisma.$transaction(async (tx) => {
         const updated = await tx.wikiPage.update({
@@ -69,7 +105,7 @@ export default withRoute<z.infer<typeof updateWikiPageSchema>, unknown, z.input<
             ...(body.title && { title: body.title, slug: newSlug }),
             ...(body.content !== undefined && { content: body.content }),
             ...(body.parentId !== undefined && { parentId: body.parentId === null ? null : body.parentId }),
-            version: newVersion,
+            ...(isContentUpdate && { version: newVersion }),
           },
           include: {
             author: { select: { id: true, name: true, email: true, avatarUrl: true } },
@@ -79,14 +115,17 @@ export default withRoute<z.infer<typeof updateWikiPageSchema>, unknown, z.input<
           },
         })
 
-        await tx.wikiPageVersion.create({
-          data: {
-            wikiPageId: id,
-            content: body.content ?? currentPage.content,
-            authorId: currentPage.authorId,
-            version: newVersion,
-          },
-        })
+        if (isContentUpdate) {
+          // WIKI-10: authorId is the editor, not the original page author.
+          await tx.wikiPageVersion.create({
+            data: {
+              wikiPageId: id,
+              content: body.content!,
+              authorId: session.user.id,
+              version: newVersion,
+            },
+          })
+        }
 
         return updated
       })

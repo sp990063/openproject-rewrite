@@ -6,6 +6,7 @@ import { prisma } from '@/lib/prisma';
 import { authOptions } from '@/lib/auth';
 import { successResponse, errorResponse } from '@/lib/api-response';
 import { deleteFile } from '@/lib/s3';
+import { assertProjectMembership } from '@/lib/auth/project';
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
   // @ts-ignore - next-auth types are complex
@@ -24,18 +25,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(404).json(errorResponse('NOT_FOUND', 'File not found'));
   }
 
+  // Phase 3 Sprint 2 (RBAC-16 high): gate GET to project members (or
+  // uploader, or system admin). Previously the GET branch returned the
+  // full file metadata to any authenticated user. Mirror the existing
+  // DELETE logic so both methods share the same access control.
+  const isUploader = file.uploadedById === session.user.id;
+  const isAdmin = !!session.user.isSystemAdmin;
+  if (!isUploader && !isAdmin) {
+    // Throws 403 FORBIDDEN if not a member; 404 if project doesn't exist.
+    // Both DELETE and GET now route through this check.
+    await assertProjectMembership(file.projectId, session.user.id, isAdmin);
+  }
+
   // DELETE: 刪除檔案
   if (req.method === 'DELETE') {
-    const isUploader = file.uploadedById === session.user.id;
-    // 獲取成員及其角色（需select role）
-    const membership = await prisma.member.findUnique({
-      where: { userId_projectId: { userId: session.user.id, projectId: file.projectId } },
-      include: { role: true },
-    });
-
-    // 可刪除者：上傳者、或有 Admin 角色的成員
-    if (!isUploader && membership?.role?.name !== 'Admin') {
-      return res.status(403).json(errorResponse('FORBIDDEN', 'Not authorized to delete this file'));
+    if (!isUploader) {
+      // Phase 3 Sprint 2 (RBAC-17 high): use a role-permissions check via
+      // the membership helper instead of string-comparing role.name ===
+      // 'Admin'. The hardcoded string check (line 37 in the original)
+      // bypassed the wildcard-aware permission system and broke for
+      // custom roles with '*' wildcard permissions. We still treat the
+      // uploader as authorized (already checked above).
+      // assertProjectMembership above already verified project membership;
+      // for DELETE we additionally require Admin role (not just any
+      // membership). Re-fetch role to make the decision.
+      const membership = await prisma.member.findUnique({
+        where: { userId_projectId: { userId: session.user.id, projectId: file.projectId } },
+        include: { role: true },
+      });
+      const rolePerms = membership?.role?.permissions ?? [];
+      const hasAdminPerm = rolePerms.includes('*') || rolePerms.includes('files.delete') || membership?.role?.name === 'Admin';
+      if (!hasAdminPerm) {
+        return res.status(403).json(errorResponse('FORBIDDEN', 'Admin role required to delete files'));
+      }
     }
 
     try {

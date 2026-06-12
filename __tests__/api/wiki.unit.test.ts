@@ -279,7 +279,7 @@ describe('401 — unauthenticated route requests are blocked by withRoute HOF', 
   })
 
   it('GET /api/wiki/by-slug?slug=...', async () => {
-    const m = makeMocks('GET', undefined, { slug: 'test' })
+    const m = makeMocks('GET', undefined, { slug: 'test', projectId: c(1) })
     await wikiBySlugRoute(m.req, m.res)
     expect(m.getStatus()).toBe(401)
   })
@@ -301,7 +301,7 @@ describe('403 — authenticated non-member is denied', () => {
 
   it('GET /api/wiki/by-slug?slug=...', async () => {
     mocks.wikiPageFindFirst.mockResolvedValue({ id: c(2), projectId: c(1) })
-    const m = makeMocks('GET', undefined, { slug: 'test' })
+    const m = makeMocks('GET', undefined, { slug: 'test', projectId: c(1) })
     await wikiBySlugRoute(m.req, m.res)
     expect(m.getStatus()).toBe(403)
   })
@@ -327,7 +327,7 @@ describe('404 — wiki page or slug not found', () => {
 
   it('GET /api/wiki/by-slug?slug=missing — slug not found', async () => {
     mocks.wikiPageFindFirst.mockResolvedValue(null)
-    const m = makeMocks('GET', undefined, { slug: 'missing' })
+    const m = makeMocks('GET', undefined, { slug: 'missing', projectId: c(1) })
     await wikiBySlugRoute(m.req, m.res)
     expect(m.getStatus()).toBe(404)
   })
@@ -377,7 +377,7 @@ describe('200 — happy path with project member', () => {
         children: [],
         project: { id: c(1), name: 'P', identifier: 'p' },
       })
-    const m = makeMocks('GET', undefined, { slug: 'test' })
+    const m = makeMocks('GET', undefined, { slug: 'test', projectId: c(1) })
     await wikiBySlugRoute(m.req, m.res)
     expect(m.getStatus()).toBe(200)
   })

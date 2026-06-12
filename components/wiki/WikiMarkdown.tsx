@@ -50,16 +50,33 @@ export function WikiMarkdown({ content, className, projectId, slug, parentSlug }
       linkEl.textContent = 'Loading...'
 
       try {
-        const response = await fetch(`/api/projects/${projectId}/wiki/by-slug?slug=${encodeURIComponent(pageName)}`)
+        // WIKI-4: include projectId as a query param so the bulk endpoint
+        // (/api/wiki/by-slug) can resolve the page project-scoped (the
+        // project-scoped path /api/projects/[projectId]/wiki/by-slug
+        // does not exist).
+        const response = await fetch(`/api/wiki/by-slug?slug=${encodeURIComponent(pageName)}&projectId=${encodeURIComponent(projectId)}`)
         if (response.ok) {
           const page = await response.json()
           const includedHtml = await renderMarkdown(page.content || '*Page is empty*')
-          el.innerHTML = `<div class="wiki-included-content">${includedHtml}</div>`
+          // WIKI-22: build DOM elements instead of innerHTML interpolation.
+          const wrap = document.createElement('div')
+          wrap.className = 'wiki-included-content'
+          wrap.innerHTML = includedHtml
+          el.replaceChildren(wrap)
         } else {
-          el.innerHTML = `<em class="text-red-500">Page not found: ${pageName}</em>`
+          // WIKI-22: build DOM elements (no innerHTML interpolation of
+          // user-controlled pageName) — prevents stored XSS via macro.
+          const em = document.createElement('em')
+          em.className = 'text-red-500'
+          em.textContent = `Page not found: ${pageName}`
+          el.replaceChildren(em)
         }
       } catch {
-        el.innerHTML = `<em class="text-red-500">Failed to load: ${pageName}</em>`
+        // WIKI-22: same DOM-construction pattern as the 404 branch.
+        const em = document.createElement('em')
+        em.className = 'text-red-500'
+        em.textContent = `Failed to load: ${pageName}`
+        el.replaceChildren(em)
       }
     })
 

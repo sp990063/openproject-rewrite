@@ -56,6 +56,55 @@ export default withRoute(
         await assertWorkPackageEditPermission(id, session.user.id, isAdmin)
 
         const parsed = createRelationSchema.parse(body)
+
+        // WP-1: validate toId — must exist, must not be self-loop, must
+        // share the same project as fromId. Without these checks an
+        // attacker with WORK_PACKAGE_EDIT on project A could create a
+        // relation pointing at a WP in project B (schema has no
+        // cross-project FK), silently leaking project boundaries and
+        // corrupting the data model that `assertRelationProjectMembership`
+        // assumes is intra-project.
+        if (parsed.toId === id) {
+          throw new ApiError(
+            400,
+            'SELF_LOOP_RELATION',
+            'A work package cannot be related to itself'
+          )
+        }
+
+        const [fromWp, toWp] = await Promise.all([
+          prisma.workPackage.findUnique({
+            where: { id },
+            select: { projectId: true, authorId: true },
+          }),
+          prisma.workPackage.findUnique({
+            where: { id: parsed.toId },
+            select: { projectId: true },
+          }),
+        ])
+
+        if (!fromWp) {
+          throw new ApiError(
+            404,
+            'WORK_PACKAGE_NOT_FOUND',
+            'From work package not found'
+          )
+        }
+        if (!toWp) {
+          throw new ApiError(
+            404,
+            'WORK_PACKAGE_NOT_FOUND',
+            'Target work package not found'
+          )
+        }
+        if (toWp.projectId !== fromWp.projectId) {
+          throw new ApiError(
+            422,
+            'CROSS_PROJECT_RELATION',
+            'Cannot relate work packages across different projects'
+          )
+        }
+
         const relation = await prisma.workPackageRelation.create({
           data: {
             fromId: id,
@@ -66,12 +115,6 @@ export default withRoute(
             from: { select: { id: true, subject: true, statusId: true, typeId: true } },
             to: { select: { id: true, subject: true, statusId: true, typeId: true } },
           },
-        })
-
-        // Emit unified activity for the from work package
-        const fromWp = await prisma.workPackage.findUnique({
-          where: { id },
-          select: { projectId: true, authorId: true },
         })
 
         if (fromWp) {

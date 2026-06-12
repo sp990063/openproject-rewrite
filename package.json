@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack",
+    "dev:fe": "vite",
     "build": "next build --turbopack",
+    "build:fe": "vite build",
     "start": "next start",
     "lint": "eslint",
     "db:migrate": "prisma migrate dev",
@@ -12,6 +14,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "test": "vitest",
+    "test:fe": "vitest run --config vitest.fe.config.js",
+    "test:fe:watch": "vitest --config vitest.fe.config.js",
+    "test:e2e": "playwright test",
     "test:integration": "vitest run --config vitest.integration.config.ts __tests__/api/routes-integration.test.ts __tests__/api/auth-guard.test.ts",
     "test:auth-guard": "vitest run --config vitest.integration.config.ts __tests__/api/auth-guard.test.ts",
     "analyze": "ANALYZE=true next build"
@@ -111,6 +116,7 @@
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
     "typescript": "^5",
+    "vite": "^8.0.16",
     "vitest": "^4.1.4"
   }
 }

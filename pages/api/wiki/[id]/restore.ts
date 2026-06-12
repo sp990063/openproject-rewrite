@@ -56,7 +56,7 @@ export default withRoute<z.infer<typeof restoreSchema>, unknown, z.input<typeof 
           data: {
             wikiPageId: id,
             content: targetVersion.content,
-            authorId: page.authorId,
+            authorId: session.user.id,
             version: newVersion,
           },
         })

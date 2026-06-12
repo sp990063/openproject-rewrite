@@ -1,0 +1,341 @@
+/* frontend/styles/components.css
+ * Primitive component styles. Each class is a contract used by the
+ * vanilla component factories in components/primitives/.
+ *
+ * Convention: every visual class starts with `.op-` to avoid conflicts. */
+
+/* ── Button ───────────────────────────────────────────────────────────── */
+.op-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--op-sp-2);
+  padding: var(--op-sp-2) var(--op-sp-4);
+  font-size: var(--op-fs-sm);
+  font-weight: var(--op-fw-medium);
+  line-height: 1;
+  border-radius: var(--op-r-md);
+  border: 1px solid transparent;
+  background: var(--op-bg-elevated);
+  color: var(--op-text);
+  cursor: pointer;
+  user-select: none;
+  transition: background var(--op-dur-fast) var(--op-ease),
+              border-color var(--op-dur-fast) var(--op-ease);
+}
+.op-btn:hover { background: var(--op-bg-hover); }
+.op-btn:active { background: var(--op-bg-active); }
+.op-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.op-btn--primary {
+  background: var(--op-primary);
+  color: var(--op-text-inverse);
+  border-color: var(--op-primary);
+}
+.op-btn--primary:hover { background: var(--op-primary-hover); border-color: var(--op-primary-hover); }
+
+.op-btn--danger {
+  background: var(--op-danger);
+  color: var(--op-text-inverse);
+  border-color: var(--op-danger);
+}
+
+.op-btn--ghost { background: transparent; border-color: transparent; }
+.op-btn--ghost:hover { background: var(--op-bg-hover); }
+
+.op-btn--sm { padding: var(--op-sp-1) var(--op-sp-2); font-size: var(--op-fs-xs); }
+.op-btn--lg { padding: var(--op-sp-3) var(--op-sp-6); font-size: var(--op-fs-md); }
+
+/* ── Input ────────────────────────────────────────────────────────────── */
+.op-input,
+.op-textarea,
+.op-select {
+  display: block;
+  width: 100%;
+  padding: var(--op-sp-2) var(--op-sp-3);
+  font-size: var(--op-fs-sm);
+  background: var(--op-bg);
+  color: var(--op-text);
+  border: 1px solid var(--op-border-strong);
+  border-radius: var(--op-r-md);
+  transition: border-color var(--op-dur-fast) var(--op-ease);
+}
+.op-input:focus,
+.op-textarea:focus,
+.op-select:focus {
+  outline: none;
+  border-color: var(--op-primary);
+  box-shadow: 0 0 0 3px var(--op-primary-bg);
+}
+.op-input--error { border-color: var(--op-danger); }
+.op-textarea { min-height: 100px; resize: vertical; font-family: var(--op-font-sans); }
+
+.op-label {
+  display: block;
+  font-size: var(--op-fs-sm);
+  font-weight: var(--op-fw-medium);
+  color: var(--op-text);
+  margin-bottom: var(--op-sp-1);
+}
+.op-help {
+  font-size: var(--op-fs-xs);
+  color: var(--op-text-muted);
+  margin-top: var(--op-sp-1);
+}
+.op-error {
+  font-size: var(--op-fs-xs);
+  color: var(--op-danger);
+  margin-top: var(--op-sp-1);
+}
+
+.op-field { margin-bottom: var(--op-sp-4); }
+
+/* ── Checkbox ─────────────────────────────────────────────────────────── */
+.op-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--op-sp-2);
+  cursor: pointer;
+  user-select: none;
+}
+.op-checkbox input { margin: 0; cursor: pointer; }
+
+/* ── Badge ────────────────────────────────────────────────────────────── */
+.op-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  font-size: var(--op-fs-xs);
+  font-weight: var(--op-fw-medium);
+  border-radius: var(--op-r-full);
+  background: var(--op-bg-sunken);
+  color: var(--op-text-muted);
+  white-space: nowrap;
+}
+.op-badge--success { background: var(--op-success-bg); color: var(--op-success); }
+.op-badge--warning { background: var(--op-warning-bg); color: var(--op-warning); }
+.op-badge--danger  { background: var(--op-danger-bg);  color: var(--op-danger); }
+.op-badge--info    { background: var(--op-info-bg);    color: var(--op-info); }
+.op-badge--primary { background: var(--op-primary-bg); color: var(--op-primary); }
+
+/* ── Dialog (modal) ───────────────────────────────────────────────────── */
+.op-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: var(--op-z-modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--op-sp-4);
+}
+.op-dialog {
+  background: var(--op-bg);
+  border-radius: var(--op-r-lg);
+  box-shadow: var(--op-shadow-xl);
+  z-index: var(--op-z-modal);
+  max-width: 500px;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+}
+.op-dialog--lg { max-width: 800px; }
+.op-dialog--xl { max-width: 1100px; }
+.op-dialog__header {
+  padding: var(--op-sp-4) var(--op-sp-6);
+  border-bottom: 1px solid var(--op-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.op-dialog__title { font-size: var(--op-fs-lg); font-weight: var(--op-fw-semibold); }
+.op-dialog__body { padding: var(--op-sp-6); overflow-y: auto; }
+.op-dialog__footer {
+  padding: var(--op-sp-3) var(--op-sp-6);
+  border-top: 1px solid var(--op-border);
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--op-sp-2);
+}
+
+/* ── Tabs ─────────────────────────────────────────────────────────────── */
+.op-tabs {
+  display: flex;
+  flex-direction: column;
+}
+.op-tabs__list {
+  display: flex;
+  border-bottom: 1px solid var(--op-border);
+  gap: var(--op-sp-1);
+}
+.op-tabs__tab {
+  padding: var(--op-sp-3) var(--op-sp-4);
+  font-size: var(--op-fs-sm);
+  color: var(--op-text-muted);
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+}
+.op-tabs__tab:hover { color: var(--op-text); }
+.op-tabs__tab--active {
+  color: var(--op-primary);
+  border-bottom-color: var(--op-primary);
+  font-weight: var(--op-fw-medium);
+}
+.op-tabs__panel { padding: var(--op-sp-4) 0; }
+
+/* ── Dropdown ─────────────────────────────────────────────────────────── */
+.op-dropdown {
+  position: relative;
+  display: inline-block;
+}
+.op-dropdown__menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: var(--op-sp-1);
+  min-width: 180px;
+  background: var(--op-bg);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-r-md);
+  box-shadow: var(--op-shadow-md);
+  z-index: var(--op-z-dropdown);
+  padding: var(--op-sp-1);
+}
+.op-dropdown__item {
+  display: block;
+  width: 100%;
+  padding: var(--op-sp-2) var(--op-sp-3);
+  text-align: left;
+  font-size: var(--op-fs-sm);
+  background: transparent;
+  border: 0;
+  border-radius: var(--op-r-sm);
+  cursor: pointer;
+  color: var(--op-text);
+}
+.op-dropdown__item:hover { background: var(--op-bg-hover); }
+.op-dropdown__divider {
+  height: 1px;
+  background: var(--op-border);
+  margin: var(--op-sp-1) 0;
+}
+
+/* ── Toast ────────────────────────────────────────────────────────────── */
+.op-toasts {
+  position: fixed;
+  bottom: var(--op-sp-6);
+  right: var(--op-sp-6);
+  display: flex;
+  flex-direction: column;
+  gap: var(--op-sp-2);
+  z-index: var(--op-z-toast);
+  max-width: 360px;
+}
+.op-toast {
+  padding: var(--op-sp-3) var(--op-sp-4);
+  background: var(--op-bg-elevated);
+  border: 1px solid var(--op-border);
+  border-left: 4px solid var(--op-info);
+  border-radius: var(--op-r-md);
+  box-shadow: var(--op-shadow-md);
+  font-size: var(--op-fs-sm);
+}
+.op-toast--success { border-left-color: var(--op-success); }
+.op-toast--error   { border-left-color: var(--op-danger); }
+.op-toast--info    { border-left-color: var(--op-info); }
+
+/* ── Spinner ──────────────────────────────────────────────────────────── */
+.op-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--op-border);
+  border-top-color: var(--op-primary);
+  border-radius: 50%;
+  animation: op-spin 0.8s linear infinite;
+}
+.op-spinner--lg { width: 32px; height: 32px; border-width: 3px; }
+@keyframes op-spin { to { transform: rotate(360deg); } }
+
+/* ── Empty state ──────────────────────────────────────────────────────── */
+.op-empty {
+  text-align: center;
+  padding: var(--op-sp-12) var(--op-sp-4);
+  color: var(--op-text-muted);
+}
+.op-empty__title { font-size: var(--op-fs-lg); color: var(--op-text); margin-bottom: var(--op-sp-2); }
+
+/* ── Tooltip ──────────────────────────────────────────────────────────── */
+.op-tooltip {
+  position: absolute;
+  background: var(--op-text);
+  color: var(--op-text-inverse);
+  padding: var(--op-sp-1) var(--op-sp-2);
+  font-size: var(--op-fs-xs);
+  border-radius: var(--op-r-sm);
+  pointer-events: none;
+  z-index: var(--op-z-tooltip);
+  white-space: nowrap;
+}
+
+/* ── Card ─────────────────────────────────────────────────────────────── */
+.op-card {
+  background: var(--op-bg-elevated);
+  border: 1px solid var(--op-border);
+  border-radius: var(--op-r-lg);
+  padding: var(--op-sp-4);
+}
+
+/* ── Page header (consistent h1 + actions row) ────────────────────────── */
+.op-page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--op-sp-4);
+  margin-bottom: var(--op-sp-6);
+}
+.op-page-header h1 {
+  font-size: var(--op-fs-2xl);
+  font-weight: var(--op-fw-semibold);
+  line-height: var(--op-lh-tight);
+}
+.op-page-header__actions {
+  display: flex;
+  gap: var(--op-sp-2);
+  align-items: center;
+}
+
+/* ── Table ────────────────────────────────────────────────────────────── */
+.op-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--op-fs-sm);
+}
+.op-table th,
+.op-table td {
+  padding: var(--op-sp-2) var(--op-sp-3);
+  text-align: left;
+  border-bottom: 1px solid var(--op-border);
+}
+.op-table th {
+  font-weight: var(--op-fw-medium);
+  color: var(--op-text-muted);
+  background: var(--op-bg-sunken);
+  user-select: none;
+  cursor: pointer;
+}
+.op-table tbody tr:hover { background: var(--op-bg-hover); }
+
+/* ── List ─────────────────────────────────────────────────────────────── */
+.op-list { list-style: none; padding: 0; margin: 0; }
+.op-list__item {
+  padding: var(--op-sp-2) var(--op-sp-3);
+  border-radius: var(--op-r-md);
+  display: block;
+  color: var(--op-text);
+}
+.op-list__item:hover { background: var(--op-bg-hover); text-decoration: none; }
+.op-list__item--active { background: var(--op-primary-bg); color: var(--op-primary); }

@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { isValidWebhookEvent, WEBHOOK_EVENTS } from '@/lib/webhooks/event-types'
 import { z } from 'zod'
 import { getServerSession } from 'next-auth'
-import { authOptions } from '@/lib/auth'
+import { authOptions, isSystemAdmin } from '@/lib/auth'
 
 const updateWebhookSchema = z.object({
   url: z.string().url().optional(),
@@ -18,6 +18,15 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
   const session = await getServerSession(req, res, authOptions)
   if (!session?.user) {
     return res.status(401).json({ success: false, error: 'Unauthorized' })
+  }
+
+  // Phase 3 Sprint 2 (RBAC-12 high): mirror the listing-endpoint admin gate.
+  // Previously: any logged-in user could GET/PUT/PATCH/DELETE any webhook
+  // by ID. Now: only system admins can manage webhooks. The asymmetry
+  // between the listing endpoint (admin-gated) and the [id] endpoint
+  // (open) was the root cause.
+  if (!(await isSystemAdmin(session.user.id))) {
+    return res.status(403).json({ error: 'Forbidden: system admin only' })
   }
 
   const { id } = req.query

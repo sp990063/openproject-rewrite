@@ -16,9 +16,19 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
+  // Phase 3 Sprint 2 (RBAC-14 high): gate the GET listing to system admins
+  // too. Previously POST was admin-gated (line 47) but GET leaked every
+  // group's name + member count to any authenticated user. Group
+  // rosters are admin-restricted in OpenProject.
+  if (req.method === 'GET') {
+    const isAdmin = await isSystemAdmin(session.user.id)
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Forbidden: system admin only' })
+    }
+    return getGroups(req, res)
+  }
+
   switch (req.method) {
-    case 'GET':
-      return getGroups(req, res)
     case 'POST':
       return createGroup(req, res)
     default:

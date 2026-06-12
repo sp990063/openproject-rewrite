@@ -2,6 +2,7 @@ import { NextApiRequest, NextApiResponse } from 'next'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
+import { assertProjectMembership } from '@/lib/auth/project'
 import { z } from 'zod'
 import { successResponse, errorResponse } from '@/lib/api-response'
 
@@ -41,11 +42,14 @@ async function getTimeEntry(req: NextApiRequest, res: NextApiResponse, id: strin
       return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
     }
 
+    // Phase 3 Sprint 2 (RBAC-7 high): resolve projectId and gate on
+    // project membership. The entry's owner can always view their own
+    // entry; otherwise viewer must be a project member or system admin.
     const entry = await prisma.timeEntry.findUnique({
       where: { id },
       include: {
         workPackage: {
-          select: { id: true, subject: true, estimatedHours: true }
+          select: { id: true, subject: true, estimatedHours: true, projectId: true }
         },
         user: { select: { id: true, name: true } },
         approver: { select: { id: true, name: true } },
@@ -54,6 +58,15 @@ async function getTimeEntry(req: NextApiRequest, res: NextApiResponse, id: strin
 
     if (!entry) {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Time entry not found'))
+    }
+
+    const isOwner = entry.userId === session.user.id
+    if (!isOwner) {
+      await assertProjectMembership(
+        entry.workPackage.projectId,
+        session.user.id,
+        !!session.user.isSystemAdmin
+      )
     }
 
     const estimatedHours = entry.workPackage?.estimatedHours
@@ -89,11 +102,23 @@ async function updateTimeEntry(req: NextApiRequest, res: NextApiResponse, id: st
 
     const data = updateTimeEntrySchema.parse(req.body)
 
-    // Fetch the existing entry
-    const existing = await prisma.timeEntry.findUnique({ where: { id } })
+    // Fetch the existing entry (with projectId for membership check)
+    const existing = await prisma.timeEntry.findUnique({
+      where: { id },
+      include: { workPackage: { select: { projectId: true } } },
+    })
     if (!existing) {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Time entry not found'))
     }
+
+    // Phase 3 Sprint 2 (RBAC-8 high): project-membership gate. Owner
+    // check below still applies — non-owners cannot update even if
+    // they happen to share the project.
+    await assertProjectMembership(
+      existing.workPackage.projectId,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
     // Only allow owner to update their own pending/rejected entries
     if (existing.userId !== session.user.id) {
@@ -145,10 +170,22 @@ async function deleteTimeEntry(req: NextApiRequest, res: NextApiResponse, id: st
       return res.status(401).json(errorResponse('UNAUTHORIZED', 'You must be logged in'))
     }
 
-    const existing = await prisma.timeEntry.findUnique({ where: { id } })
+    const existing = await prisma.timeEntry.findUnique({
+      where: { id },
+      include: { workPackage: { select: { projectId: true } } },
+    })
     if (!existing) {
       return res.status(404).json(errorResponse('NOT_FOUND', 'Time entry not found'))
     }
+
+    // Phase 3 Sprint 2 (RBAC-8 high): project-membership gate. Owner
+    // check below still applies — non-owners cannot delete even if
+    // they happen to share the project.
+    await assertProjectMembership(
+      existing.workPackage.projectId,
+      session.user.id,
+      !!session.user.isSystemAdmin
+    )
 
     // Only allow owner to delete their own pending/rejected entries
     if (existing.userId !== session.user.id) {

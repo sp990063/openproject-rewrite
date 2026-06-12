@@ -3,7 +3,7 @@
 import type { NextApiResponse } from 'next'
 import { z } from 'zod'
 import { prisma } from '@/lib/prisma'
-import { generateSlug } from '@/lib/markdown'
+import { generateSlug, uniqueSlug } from '@/lib/slug'
 import { withRoute, ApiError } from '@/lib/api/withRoute'
 
 const querySchema = z.object({
@@ -39,18 +39,17 @@ export default withRoute<z.infer<typeof createWikiPageSchema>, z.input<typeof qu
 
     // POST /api/wiki — create a wiki page (body validated)
     if (req.method === 'POST') {
-      const slug = generateSlug(body.title)
+      const baseSlug = generateSlug(body.title)
 
-      const existing = await prisma.wikiPage.findUnique({
-        where: { projectId_slug: { projectId: body.projectId, slug } },
-      })
-      if (existing) {
-        throw new ApiError(
-          409,
-          'WIKI_PAGE_EXISTS',
-          'A wiki page with this title already exists in the project'
-        )
-      }
+      // Auto-uniquify: append -2, -3, etc. when the base slug is taken in
+      // the same project. Mirrors pages/api/projects/[projectId]/wiki.
+      const existingSlugs = (
+        await prisma.wikiPage.findMany({
+          where: { projectId: body.projectId },
+          select: { slug: true },
+        })
+      ).map((p) => p.slug)
+      const slug = uniqueSlug(baseSlug, existingSlugs)
 
       const wikiPage = await prisma.$transaction(async (tx) => {
         const page = await tx.wikiPage.create({
