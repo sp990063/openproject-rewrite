@@ -43,14 +43,61 @@ export default withRoute(
         if (existing.meetingId !== id) {
           throw new ApiError(400, 'MISMATCH', 'Agenda item does not belong to this meeting')
         }
-        const item = await prisma.meetingAgendaItem.update({
-          where: { id: agendaId },
-          data: {
-            ...(body.title !== undefined && { title: body.title }),
-            ...(body.notes !== undefined && { notes: body.notes }),
-            ...(body.duration !== undefined && { duration: body.duration }),
-            ...(body.position !== undefined && { position: body.position }),
-          },
+        // Phase 3 Sprint 7 FM-7 fix: when position changes, shift siblings
+        // to avoid position collisions. The single-item PATCH below
+        // creates gaps and duplicates when two items end up at the same
+        // position. We do this in a single transaction so a partial
+        // reorder can't be observed.
+        const item = await prisma.$transaction(async (tx) => {
+          if (body.position !== undefined && body.position !== existing.position) {
+            const newPos = body.position
+            const oldPos = existing.position
+            // Clamp newPos into [0, totalItems-1] so the client can't
+            // request a position larger than the array.
+            const total = await tx.meetingAgendaItem.count({ where: { meetingId: id } })
+            const clamped = Math.max(0, Math.min(newPos, total - 1))
+            // Shift everything between the old and new positions by 1.
+            if (clamped < oldPos) {
+              // Moving up: shift items in [clamped, oldPos) up by 1.
+              await tx.meetingAgendaItem.updateMany({
+                where: {
+                  meetingId: id,
+                  position: { gte: clamped, lt: oldPos },
+                  id: { not: agendaId },
+                },
+                data: { position: { increment: 1 } },
+              })
+            } else if (clamped > oldPos) {
+              // Moving down: shift items in (oldPos, clamped] down by 1.
+              await tx.meetingAgendaItem.updateMany({
+                where: {
+                  meetingId: id,
+                  position: { gt: oldPos, lte: clamped },
+                  id: { not: agendaId },
+                },
+                data: { position: { decrement: 1 } },
+              })
+            }
+            return tx.meetingAgendaItem.update({
+              where: { id: agendaId },
+              data: {
+                ...(body.title !== undefined && { title: body.title }),
+                ...(body.notes !== undefined && { notes: body.notes }),
+                ...(body.duration !== undefined && { duration: body.duration }),
+                position: clamped,
+              },
+            })
+          }
+          // No position change — straight update.
+          return tx.meetingAgendaItem.update({
+            where: { id: agendaId },
+            data: {
+              ...(body.title !== undefined && { title: body.title }),
+              ...(body.notes !== undefined && { notes: body.notes }),
+              ...(body.duration !== undefined && { duration: body.duration }),
+              ...(body.position !== undefined && { position: body.position }),
+            },
+          })
         })
         return res.status(200).json(item)
       }

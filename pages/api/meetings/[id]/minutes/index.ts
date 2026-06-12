@@ -73,6 +73,25 @@ export default withRoute(
         if (!existing) {
           throw new ApiError(404, 'MINUTES_NOT_FOUND', 'Minutes not found')
         }
+        // Phase 3 Sprint 7 FM-5 fix: only the minutes author or a system
+        // admin can edit minutes after the meeting has started. Until
+        // the meeting starts, the author can still take pre-meeting
+        // notes; once it starts the record is effectively immutable.
+        if (!isAdmin && existing.authorId !== session.user.id) {
+          throw new ApiError(403, 'FORBIDDEN', 'Only the minutes author or a system admin can edit minutes')
+        }
+        const meeting = await prisma.meeting.findUnique({
+          where: { id },
+          select: { startTime: true },
+        })
+        if (!meeting) {
+          throw new ApiError(404, 'MEETING_NOT_FOUND', 'Meeting not found')
+        }
+        if (meeting.startTime <= new Date()) {
+          if (!isAdmin) {
+            throw new ApiError(403, 'FORBIDDEN', 'Minutes are locked after the meeting has started')
+          }
+        }
         const minutes = await prisma.meetingMinutes.update({
           where: { meetingId: id },
           data: { content: body.content },
