@@ -44,11 +44,21 @@ export default withRoute(
         const threads = await prisma.forumThread.findMany({
           where: { forumId },
           include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, avatarUrl: true } },
             forum: { select: { id: true, name: true } },
             _count: { select: { posts: true } },
           },
-          orderBy: [{ isSticky: 'desc' }, { createdAt: 'desc' }],
+          // Phase 3 Sprint 7 FM-1 fix: align with the project-scoped
+          // route's order — pinned first, then sticky, then most recent.
+          // Previously this route only sorted by isSticky desc, so
+          // threads pinned via /pin.ts (isPinned=true) were NOT
+          // surfaced to the top here even though they were on the
+          // project-scoped route — a confusing UX inconsistency.
+          orderBy: [
+            { isPinned: 'desc' },
+            { isSticky: 'desc' },
+            { createdAt: 'desc' },
+          ],
         })
         return res.status(200).json(threads)
       }
@@ -67,7 +77,7 @@ export default withRoute(
             isLocked: body.isLocked ?? false,
           },
           include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, avatarUrl: true } },
             forum: { select: { id: true, name: true } },
           },
         })
