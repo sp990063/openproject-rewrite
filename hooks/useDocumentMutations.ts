@@ -76,9 +76,16 @@ export function useUpdateDocument() {
   return useMutation({
     mutationFn: ({ projectId, id, data }: { projectId: string; id: string; data: UpdateDocumentInput }) =>
       updateDocument(projectId, id, data),
-    onSuccess: (_data, variables) => {
+    onSuccess: (data, variables) => {
+      // HS-13 + HS-10 fix: prefer the server-confirmed folderId, fall back
+      // to the input folderId. Then do a broad prefix invalidation to
+      // catch any folder-scoped list that might also display this doc.
+      const folderId = data?.folderId ?? (variables as { folderId?: string | null }).folderId
       void queryClient.invalidateQueries({
-        queryKey: queryKeys.documents(variables.projectId, undefined),
+        queryKey: queryKeys.documents(variables.projectId, folderId ?? null),
+      })
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.documentFolders(variables.projectId, folderId ?? null),
       })
       void queryClient.invalidateQueries({ queryKey: ['documents'] })
     },

@@ -174,13 +174,75 @@ export function batch(fn) {
 /** Current logged-in user. null = anonymous. */
 export const currentUser = signal(null)
 
+/**
+ * Set the current user via a single funnel (HS-5).
+ * All writes should go through this so future session-refresh logic
+ * (token rotation, role updates) can be wired in one place.
+ * @param {object|null} user
+ */
+export function setCurrentUser(user) {
+  currentUser.value = user
+}
+
 /** 'light' or 'dark'. */
 export const theme = signal(localStorage.getItem('op-theme') || 'light')
-theme.subscribe(t => localStorage.setItem('op-theme', t))
 
 /** Sidebar collapsed. */
 export const sidebarCollapsed = signal(localStorage.getItem('op-sidebar') === '1')
-sidebarCollapsed.subscribe(v => localStorage.setItem('op-sidebar', v ? '1' : '0'))
+
+/**
+ * @type {Array<() => void>} — unsubscribe handles for store subscribers,
+ * populated by initStore() and cleared by __resetStoreForTests().
+ * HS-5 fix: keep subscribe() calls out of module top-level to avoid
+ * accumulating listeners across HMR reloads and test imports.
+ */
+const _storeSubscribers = []
+
+/**
+ * Wire localStorage sync for theme + sidebarCollapsed. Call this once at
+ * app bootstrap (e.g. from shell.js) and again on HMR to swap handles.
+ *
+ * @param {{persist?: boolean}} [opts] — when persist is false, no
+ *   localStorage subscribe is attached (useful for tests). Returns an
+ *   unsubscribe function that removes ALL subscribers attached by this
+ *   call (idempotent — re-init replaces the previous handles).
+ * @returns {() => void}
+ */
+export function initStore(opts = {}) {
+  // Drop any previously-attached handles (HMR re-init pattern).
+  while (_storeSubscribers.length) {
+    const u = _storeSubscribers.pop()
+    try { u() } catch { /* swallow */ }
+  }
+  if (opts.persist !== false && typeof window !== 'undefined' && window.localStorage) {
+    _storeSubscribers.push(theme.subscribe(t => localStorage.setItem('op-theme', t)))
+    _storeSubscribers.push(sidebarCollapsed.subscribe(v => localStorage.setItem('op-sidebar', v ? '1' : '0')))
+  }
+  return () => {
+    while (_storeSubscribers.length) {
+      const u = _storeSubscribers.pop()
+      try { u() } catch { /* swallow */ }
+    }
+  }
+}
+
+/**
+ * HS-5: test helper. Resets all persisted-signal state and detaches
+ * every subscriber attached via initStore().
+ */
+export function __resetStoreForTests() {
+  while (_storeSubscribers.length) {
+    const u = _storeSubscribers.pop()
+    try { u() } catch { /* swallow */ }
+  }
+  currentUser.value = null
+  theme.value = (typeof window !== 'undefined' && window.localStorage)
+    ? (localStorage.getItem('op-theme') || 'light')
+    : 'light'
+  sidebarCollapsed.value = (typeof window !== 'undefined' && window.localStorage)
+    ? (localStorage.getItem('op-sidebar') === '1')
+    : false
+}
 
 /** Toast queue. */
 export const toasts = signal(/** @type {Array<{id: string, kind: 'info'|'success'|'error', text: string, ttl?: number}>} */ ([]))

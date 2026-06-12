@@ -81,6 +81,21 @@ class Router {
     return this
   }
 
+  /**
+   * Extract params for `path` by matching against all registered patterns.
+   * Returns the params from the FIRST matching pattern, or {} if no match.
+   * This is the public API; callers should not poke at private route storage.
+   * @param {string} path
+   * @returns {Record<string, string>}
+   */
+  extractParams(path) {
+    for (const r of this.routes) {
+      const params = matchPath(r.pattern, path)
+      if (params) return params
+    }
+    return {}
+  }
+
   /** @param {(ctx) => any | string} guard — return string to redirect */
   guard(fn) {
     this.guards.push(fn)

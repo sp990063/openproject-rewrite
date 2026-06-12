@@ -107,6 +107,11 @@ class QueryClient {
     entry.abortCtrl = new AbortController()
     entry.status = 'loading'
     entry.error = null
+    // HS-2 fix: also propagate 'loading' to dataSignal subscribers so they
+    // see the transition immediately when refetch() is called.
+    if (entry._dataSignal) {
+      entry._dataSignal.value = { data: entry.data, status: 'loading', error: null }
+    }
 
     const exec = fetcher({ signal: entry.abortCtrl.signal })
 
@@ -118,6 +123,11 @@ class QueryClient {
           entry.status = 'success'
           entry.error = null
           entry.dataUpdatedAt = Date.now()
+          // HS-2 fix: write through to per-entry dataSignal so useQuery
+          // subscribers see refreshed data on refetch (not just initial fetch).
+          if (entry._dataSignal) {
+            entry._dataSignal.value = { data, status: 'success', error: null }
+          }
           // Notify all observers
           for (const o of entry.observers) o.resolve(data)
           entry.observers.length = 0
@@ -131,6 +141,10 @@ class QueryClient {
           }
           entry.error = err
           entry.status = 'error'
+          // HS-2 fix: also propagate error to dataSignal subscribers.
+          if (entry._dataSignal) {
+            entry._dataSignal.value = { data: undefined, status: 'error', error: err }
+          }
           for (const o of entry.observers) o.reject(err)
           entry.observers.length = 0
         })
@@ -243,13 +257,10 @@ class QueryClient {
 
     const refetch = () => this.fetchQuery(key, fetcher, { ...opts, force: true })
 
-    // Initial fetch if needed
+    // Initial fetch if needed. HS-2 fix: _executeEntry now writes through to
+    // dataSignal, so we don't need a separate .then/.catch here.
     if (entry.status === 'idle' || entry.status === 'error') {
-      this.fetchQuery(key, fetcher, opts).then((data) => {
-        dataSig.value = { data, status: 'success', error: null }
-      }).catch((err) => {
-        dataSig.value = { data: undefined, status: 'error', error: err }
-      })
+      this.fetchQuery(key, fetcher, opts)
     }
 
     return {

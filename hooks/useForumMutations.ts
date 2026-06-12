@@ -229,6 +229,11 @@ export function useUnlockThread() {
 }
 
 // ─── Pin/Unpin helpers ───────────────────────────────────────────────────────
+//
+// HS-8 fix: previously useUnpinThread was byte-identical to usePinThread —
+// both POSTed to /pin with no body, so the server could not distinguish
+// pin from unpin. The two endpoints now differ by a `?action=` query
+// parameter, mirroring REST best-practice for action-only POST endpoints.
 
 export function usePinThread() {
   const queryClient = useQueryClient()
@@ -236,7 +241,7 @@ export function usePinThread() {
   return useMutation({
     mutationFn: async ({ projectId, forumId, threadId }: { projectId: string; forumId: string; threadId: string }) => {
       const res = await fetch(
-        `/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/pin`,
+        `/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/pin?action=pin`,
         { method: 'POST' }
       )
       if (!res.ok) throw new Error('Failed to pin thread')
@@ -244,6 +249,7 @@ export function usePinThread() {
     },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.threadId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThreads(variables.forumId) })
     },
   })
 }
@@ -254,7 +260,7 @@ export function useUnpinThread() {
   return useMutation({
     mutationFn: async ({ projectId, forumId, threadId }: { projectId: string; forumId: string; threadId: string }) => {
       const res = await fetch(
-        `/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/pin`,
+        `/api/projects/${projectId}/forums/${forumId}/threads/${threadId}/pin?action=unpin`,
         { method: 'POST' }
       )
       if (!res.ok) throw new Error('Failed to unpin thread')
@@ -262,6 +268,7 @@ export function useUnpinThread() {
     },
     onSuccess: (_data, variables) => {
       void queryClient.invalidateQueries({ queryKey: queryKeys.forumThread(variables.threadId) })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.forumThreads(variables.forumId) })
     },
   })
 }

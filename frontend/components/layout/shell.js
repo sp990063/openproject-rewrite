@@ -179,10 +179,15 @@ function renderTopbar() {
       { label: 'Logout',   onClick: () => doLogout() },
     ],
   })
+  // opDropdown now returns { el, dispose }; pull out the element.
+  const userMenuEl = userMenu.el || userMenu
+  // Dispose on logout (cleanup document listeners) — we mount once at app
+  // boot, so this only matters in test/HMR re-mount scenarios.
+  disposers.push(userMenu.dispose)
   // opDropdown renders its own button; we just attach it.
   // Replace our placeholder button with the dropdown's button.
   header.removeChild(userBtn)
-  header.appendChild(userMenu)
+  header.appendChild(userMenuEl)
 
   return header
 }
@@ -197,6 +202,9 @@ async function doLogout() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
+        // NextAuth v5 expects `csrfToken` = full `<token>|<hash>` value
+        // (the same value stored in the `next-auth.csrf-token` cookie).
+        // Sending only the token segment causes a CSRF validation failure.
         body: JSON.stringify({ csrfToken: readCookieCsrf() }),
       })
     } catch (e) { /* fall through */ }
@@ -205,9 +213,13 @@ async function doLogout() {
   setTimeout(() => { location.href = '/login' }, 300)
 }
 
+/**
+ * Read the NextAuth CSRF cookie and return its FULL value
+ * (`<token>|<hash>`). The server validates `csrfToken` against this
+ * exact value, so we must NOT strip the hash segment.
+ */
 function readCookieCsrf() {
   const m = document.cookie.match(/next-auth\.csrf-token=([^;]+)/)
   if (!m) return ''
-  const raw = decodeURIComponent(m[1])
-  return raw.includes('|') ? raw.split('|')[0] : raw
+  return decodeURIComponent(m[1])
 }

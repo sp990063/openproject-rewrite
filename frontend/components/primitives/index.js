@@ -157,9 +157,15 @@ export function opCheckbox(opts) {
 // ── 6. opDialog ───────────────────────────────────────────────────────────
 /**
  * A modal dialog. Returns { el, close, onClose }.
+ * `body` MUST be an HTMLElement — strings are rejected to prevent XSS.
+ * For text-only content, wrap in a `div` or use `textContent` on a child node.
  * @param {{title?: string, body: HTMLElement, footer?: HTMLElement, size?: 'md'|'lg'|'xl', onClose?: Function}} opts
  */
 export function opDialog(opts) {
+  if (!opts) throw new TypeError('opDialog: opts is required')
+  if (!(opts.body instanceof HTMLElement)) {
+    throw new TypeError('opDialog: opts.body must be an HTMLElement (got ' + typeof opts.body + '). Use document.createElement() to build content safely.')
+  }
   const backdrop = document.createElement('div')
   backdrop.className = 'op-dialog-backdrop'
   backdrop.setAttribute('role', 'dialog')
@@ -187,18 +193,20 @@ export function opDialog(opts) {
     dialog.appendChild(header)
   }
 
-  // Body
+  // Body — HTMLElement only (XSS guard)
   const body = document.createElement('div')
   body.className = 'op-dialog__body'
-  if (opts.body instanceof HTMLElement) body.appendChild(opts.body)
-  else if (typeof opts.body === 'string') body.innerHTML = opts.body
+  body.appendChild(opts.body)
   dialog.appendChild(body)
 
   // Footer
   if (opts.footer) {
+    if (!(opts.footer instanceof HTMLElement)) {
+      throw new TypeError('opDialog: opts.footer must be an HTMLElement (got ' + typeof opts.footer + ').')
+    }
     const footer = document.createElement('div')
     footer.className = 'op-dialog__footer'
-    if (opts.footer instanceof HTMLElement) footer.appendChild(opts.footer)
+    footer.appendChild(opts.footer)
     dialog.appendChild(footer)
   }
 
@@ -221,6 +229,7 @@ export function opDialog(opts) {
  * Toggle-button dropdown. Renders trigger + menu items.
  * Click outside to close.
  * @param {{label: string, items: Array<{label: string, onClick: Function, divider?: boolean}>}} opts
+ * @returns {{el: HTMLElement, dispose: () => void}}
  */
 export function opDropdown(opts) {
   const wrap = document.createElement('div')
@@ -233,6 +242,9 @@ export function opDropdown(opts) {
   menu.className = 'op-dropdown__menu'
   menu.style.display = 'none'
 
+  // Track item handlers so we can dispose them (memory-leak guard)
+  const itemDisposers = []
+
   for (const it of opts.items) {
     if (it.divider) {
       const d = document.createElement('div')
@@ -243,28 +255,57 @@ export function opDropdown(opts) {
     const item = document.createElement('button')
     item.className = 'op-dropdown__item'
     item.textContent = it.label
-    item.addEventListener('click', () => {
+    const itemHandler = () => {
       menu.style.display = 'none'
       it.onClick && it.onClick()
-    })
+    }
+    item.addEventListener('click', itemHandler)
+    itemDisposers.push(() => item.removeEventListener('click', itemHandler))
     menu.appendChild(item)
   }
   wrap.appendChild(menu)
 
-  trigger.addEventListener('click', (e) => {
+  // Toggle on trigger click; stop propagation so the document handler
+  // doesn't immediately close the menu we just opened.
+  const triggerHandler = (e) => {
     e.stopPropagation()
     menu.style.display = menu.style.display === 'none' ? 'block' : 'none'
-  })
-  document.addEventListener('click', () => { menu.style.display = 'none' })
+  }
+  trigger.addEventListener('click', triggerHandler)
 
-  return wrap
+  // Close on outside click
+  const docHandler = () => { menu.style.display = 'none' }
+  document.addEventListener('click', docHandler)
+
+  /**
+   * Detach all listeners this dropdown added to document/elements.
+   * Call this when the dropdown is removed from the DOM to avoid leaks.
+   */
+  function dispose() {
+    trigger.removeEventListener('click', triggerHandler)
+    document.removeEventListener('click', docHandler)
+    for (const d of itemDisposers) d()
+    itemDisposers.length = 0
+  }
+
+  return { el: wrap, dispose }
 }
 
 // ── 8. opTabs ─────────────────────────────────────────────────────────────
 /**
+ * Each `tab.panel` MUST be an HTMLElement — strings are rejected to prevent XSS.
+ * For text-only panels, wrap in a `div` and use `textContent`.
  * @param {{tabs: Array<{id: string, label: string, panel: HTMLElement}>, active?: string, onChange?: Function}} opts
  */
 export function opTabs(opts) {
+  if (!opts || !Array.isArray(opts.tabs)) {
+    throw new TypeError('opTabs: opts.tabs must be an array')
+  }
+  for (const t of opts.tabs) {
+    if (!(t.panel instanceof HTMLElement)) {
+      throw new TypeError('opTabs: tab.panel must be an HTMLElement for tab "' + t.id + '" (got ' + typeof t.panel + '). Use document.createElement() to build content safely.')
+    }
+  }
   const root = document.createElement('div')
   root.className = 'op-tabs'
 
@@ -301,8 +342,8 @@ export function opTabs(opts) {
     const panel = document.createElement('div')
     panel.className = 'op-tabs__panel'
     panel.setAttribute('role', 'tabpanel')
-    if (t.panel instanceof HTMLElement) panel.appendChild(t.panel)
-    else if (typeof t.panel === 'string') panel.innerHTML = t.panel
+    // XSS guard: only HTMLElement accepted (string rejected above)
+    panel.appendChild(t.panel)
     if (t.id !== activeId) panel.style.display = 'none'
     panels.set(t.id, panel)
     root.appendChild(panel)
@@ -318,8 +359,15 @@ import { effect } from '../../store.js'
 
 /**
  * Mounts a toast container at the end of <body>. Auto-renders
- * toast queue from the store. Returns the container element.
- * Call once at app bootstrap.
+ * toast queue from the store. Returns `{ el, dispose }`.
+ *
+ * Performance: re-renders the list per signal change, but uses
+ * `replaceChildren` + keyed append instead of `innerHTML = ''` to avoid
+ * forcing layout/style recalc for the discarded subtree and to reuse
+ * any toast node whose identity is unchanged.
+ *
+ * Call once at app bootstrap. Call `dispose()` on teardown to detach
+ * the effect subscription.
  */
 export function opToastHost() {
   const host = document.createElement('div')
@@ -328,19 +376,50 @@ export function opToastHost() {
   host.setAttribute('aria-live', 'polite')
   document.body.appendChild(host)
 
-  effect(() => {
+  // Cache of toast id → DOM node so we don't re-create nodes on every
+  // signal change. New toasts append, removed toasts are detached.
+  const nodeById = new Map()
+
+  const disposeEffect = effect(() => {
     const list = toastsSignal.value
-    host.innerHTML = ''
+    const seen = new Set()
+
+    // Upsert: append new toasts in order, reuse existing nodes
     for (const t of list) {
-      const el = document.createElement('div')
-      el.className = `op-toast op-toast--${t.kind}`
-      el.textContent = t.text
-      el.addEventListener('click', () => dismissToast(t.id))
-      host.appendChild(el)
+      seen.add(t.id)
+      let el = nodeById.get(t.id)
+      if (!el) {
+        el = document.createElement('div')
+        el.className = `op-toast op-toast--${t.kind}`
+        el.textContent = t.text
+        el.addEventListener('click', () => dismissToast(t.id))
+        nodeById.set(t.id, el)
+        host.appendChild(el)
+      } else {
+        // Update class/text in case kind/text changed (rare but safe)
+        el.className = `op-toast op-toast--${t.kind}`
+        el.textContent = t.text
+      }
+    }
+
+    // Remove toasts no longer in the list
+    for (const [id, el] of nodeById) {
+      if (!seen.has(id)) {
+        el.remove()
+        nodeById.delete(id)
+      }
     }
   })
 
-  return host
+  function dispose() {
+    disposeEffect()
+    // Detach all toast nodes and clear cache
+    for (const [, el] of nodeById) el.remove()
+    nodeById.clear()
+    host.remove()
+  }
+
+  return { el: host, dispose }
 }
 
 // ── 10. opSpinner ──────────────────────────────────────────────────────────

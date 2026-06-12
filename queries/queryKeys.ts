@@ -78,8 +78,10 @@ export const queryKeys = {
   documentFolderBreadcrumb: (folderId: string) =>
     ['document-folders', 'breadcrumb', folderId] as const,
 
-  /** All documents for a project */
-  documents: (projectId: string) => ['documents', projectId] as const,
+  /** All documents for a project, optionally scoped to a folder.
+   *  HS-13 fix: factory now accepts folderId as second arg (variadic). */
+  documents: (projectId: string, folderId?: string | null) =>
+    ['documents', projectId, folderId ?? null] as const,
 
   /** Single document by id */
   document: (id: string) => ['documents', 'detail', id] as const,

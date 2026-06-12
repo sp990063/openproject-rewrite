@@ -10,6 +10,7 @@
 
 import { apiGet, unwrap } from '../api-client.js'
 import { currentUser } from '../store.js'
+import { escapeHtml } from '../lib/escape-html.js'
 import {
   opButton, opCard, opEmpty, opSpinner, opBadge,
 } from '../components/primitives/index.js'
@@ -139,15 +140,7 @@ function sectionTitle(text) {
   return h
 }
 
-function escapeHtml(s) {
-  if (s == null) return ''
-  return String(s)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;')
-}
+// escapeHtml is imported from ../lib/escape-html.js
 
 function formatTime(ts) {
   if (!ts) return ''

@@ -22,22 +22,29 @@ import './styles/components.css'
 import './styles/pages.css'
 
 import { initSession, onSessionChange, getSession } from './api-client.js'
-import { currentUser, effect } from './store.js'
-import { router, matchPath } from './router.js'
+import { currentUser, setCurrentUser, initStore, effect } from './store.js'
+import { router } from './router.js'
 import { mountShell } from './components/layout/shell.js'
 import { opToastHost, opEmpty, opSpinner } from './components/primitives/index.js'
 
 // ── Bootstrap ────────────────────────────────────────────────────────────
 async function bootstrap() {
+  // 0. Wire store ↔ localStorage (HS-5). Done once at app boot. Returns
+  // an unsubscribe handle for HMR/tests; we keep it for the process lifetime.
+  initStore()
+
   // 1. Mount toast host early so subsequent code can push toasts
-  opToastHost()
+  const toastHost = opToastHost()
+  // teardown is a no-op in production (single-mount for app lifetime);
+  // matters for HMR and tests.
+  const disposers = [toastHost.dispose]
 
-  // 2. Init session (sync store.currentUser)
+  // 2. Init session (sync store.currentUser via the setCurrentUser funnel)
   const session = await initSession()
-  currentUser.value = session?.user || null
+  setCurrentUser(session?.user || null)
 
-  // Wire api-client session changes → store
-  onSessionChange((s) => { currentUser.value = s?.user || null })
+  // Wire api-client session changes → store (HS-5: use setCurrentUser funnel)
+  onSessionChange((s) => { setCurrentUser(s?.user || null) })
 
   // 3. Mount layout shell into #app
   const root = document.getElementById('app')
@@ -77,6 +84,10 @@ async function bootstrap() {
   // 6. Install link interceptor
   router.installLinkInterceptor(root)
 
+  // 6b. Expose router for cross-module nav (api-client 401 redirects, etc.).
+  // Optional indirection so we don't pin tests to window globals.
+  if (typeof window !== 'undefined') window.__opRouter = router
+
   // 7. Resolve current URL
   router.resolve()
 }
@@ -112,26 +123,13 @@ async function loadPage(main, importer) {
   }
 }
 
-/** Walk registered routes to extract :params for current path. */
+/**
+ * Read params for the current path using the router's public API.
+ * Replaces the previous usage of the private `_extractParams` method
+ * and the hard-coded `_publicPatterns` fallback list.
+ */
 function extractParams(path) {
-  // Simpler: rebuild from registered patterns
-  // We can't iterate private routes, so re-derive by re-resolving.
-  // For now, expose a helper via router for this.
-  if (router._extractParams) return router._extractParams(path)
-  // Fallback: use a simple pattern list we register below
-  return routerMatchPublic(path)
-}
-
-const _publicPatterns = [
-  '/projects/:projectId',
-  '/projects/:projectId/work-packages',
-]
-function routerMatchPublic(path) {
-  for (const p of _publicPatterns) {
-    const m = matchPath(p, path)
-    if (m) return m
-  }
-  return {}
+  return router.extractParams(path)
 }
 
 // Run on DOM ready

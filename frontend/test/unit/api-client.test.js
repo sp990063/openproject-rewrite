@@ -99,8 +99,7 @@ describe('api-client', () => {
     })
     await apiPost('/projects', { name: 'X' })
     const init = fetchMock.mock.calls[0][1]
-    // Cookie value is URL-decoded by readCookie
-    expect(init.headers['X-CSRF-Token']).toBe('abc|xyz')
+    expect(init.headers['X-CSRF-Token']).toBe('xyz')
   })
 
   it('unwrap throws on non-2xx with error.code from server envelope', async () => {

@@ -137,13 +137,14 @@ export async function apiRequest(method, path, opts = {}) {
     }
   }
 
-  // CSRF: only for non-GET, Next.js /api/* reads from csrf-token cookie
-  // and validates against X-CSRF-Token header.
+  // CSRF: only for non-GET. NextAuth v5 cookie format is `<token>|<hash>`
+  // (URL-encoded as `<token>%7C<hash>`); the server validates the HASH portion
+  // against the cookie. Sending the full `<token>|<hash>` causes a mismatch.
   if (method !== 'GET' && method !== 'HEAD') {
     const csrf = readCookie(CSRF_COOKIE)
     if (csrf) {
-      // NextAuth double-submit cookie format: "<token>|<hash>"; use the full value
-      headers['X-CSRF-Token'] = csrf
+      const hash = csrf.includes('|') ? csrf.split('|')[1] : csrf
+      headers['X-CSRF-Token'] = hash
     }
   }
 
@@ -157,13 +158,26 @@ export async function apiRequest(method, path, opts = {}) {
 
   const res = await fetch(fullUrl, init)
 
-  // 401 → session expired, force re-login
+  // 401 → session expired, force re-login.
+  // We use SPA navigation (replaceState + router.navigate) instead of
+  // `location.href` so the back-button still works after re-auth.
   if (res.status === 401) {
     setSession(null)
     // Don't redirect during initial session check (avoid loop)
     if (path !== SESSION_PATH && location.pathname !== '/login') {
       const next = encodeURIComponent(location.pathname + location.search)
-      location.href = '/login?next=' + next
+      try {
+        // Replace current history entry, then trigger SPA nav.
+        history.replaceState({}, '', '/login?next=' + next)
+        if (typeof window !== 'undefined' && window.__opRouter) {
+          window.__opRouter.navigate('/login?next=' + next, { replace: true })
+        } else {
+          // Fallback if router not exposed yet (early bootstrap edge case)
+          location.href = '/login?next=' + next
+        }
+      } catch {
+        location.href = '/login?next=' + next
+      }
     }
   }
 
