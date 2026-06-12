@@ -13,6 +13,10 @@
 //   - Method allow-list: enforced by withRoute's methods config
 //   - 409 conflict now uses the uniform {success:false,error:{code,message,
 //     details}} envelope (was: ad-hoc {error, conflicts} shape)
+// Phase 3 Sprint 7 FM-6 fix: every attendee userId must be a member of
+// the meeting's project. Previously any project member could add arbitrary
+// non-member user IDs (including service accounts or external users) to
+// a meeting's attendee list — a data-leak / HR-spam vector.
 import { prisma } from '@/lib/prisma'
 import { withRoute, ApiError } from '@/lib/api/withRoute'
 import { assertMeetingProjectMembership } from '@/lib/auth/project'
@@ -49,6 +53,31 @@ export default withRoute(
     }
 
     const attendeeIds = body.attendees.map((a) => a.userId)
+
+    // FM-6: every attendee must be a project member. We dedupe first so
+    // the membership query is cheap regardless of how many duplicate
+    // userIds the client sent. System admins can bypass (they can do
+    // anything else in the project).
+    const uniqueAttendeeIds = Array.from(new Set(attendeeIds))
+    if (!isAdmin && uniqueAttendeeIds.length > 0) {
+      const validMemberships = await prisma.member.findMany({
+        where: {
+          projectId,
+          userId: { in: uniqueAttendeeIds },
+        },
+        select: { userId: true },
+      })
+      const validSet = new Set(validMemberships.map((m) => m.userId))
+      const invalid = uniqueAttendeeIds.filter((uid) => !validSet.has(uid))
+      if (invalid.length > 0) {
+        throw new ApiError(
+          403,
+          'FORBIDDEN',
+          'All attendees must be members of the project',
+          { invalidAttendees: invalid }
+        )
+      }
+    }
 
     // Check for conflicts with new attendees (excluding current meeting)
     if (attendeeIds.length > 0) {
