@@ -31,10 +31,12 @@ export default withRoute(
     switch (req.method) {
       case 'GET': {
         await assertThreadProjectMembership(threadId, session.user.id, isAdmin)
+        // Phase 3 Sprint 7 FM-2 follow-up: don't leak author.email in the
+        // post list response.
         const posts = await prisma.forumPost.findMany({
           where: { threadId },
           include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, avatarUrl: true } },
             thread: { select: { id: true, subject: true } },
           },
           orderBy: { createdAt: 'asc' },
@@ -44,27 +46,35 @@ export default withRoute(
 
       case 'POST': {
         await assertThreadProjectMembership(threadId, session.user.id, isAdmin)
-        // Check thread lock status
-        const thread = await prisma.forumThread.findUnique({
-          where: { id: threadId },
-          select: { isLocked: true },
-        })
-        if (!thread) {
-          throw new ApiError(404, 'THREAD_NOT_FOUND', 'Thread not found')
-        }
-        if (thread.isLocked) {
-          throw new ApiError(403, 'THREAD_LOCKED', 'Cannot post to a locked thread')
-        }
-        const post = await prisma.forumPost.create({
-          data: {
-            threadId,
-            content: body.content,
-            authorId: session.user.id, // trusted from session, not body
-          },
-          include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
-            thread: { select: { id: true, subject: true } },
-          },
+        // Phase 3 Sprint 7 FM-9 fix: lock check + post create must be
+        // atomic. Previously the handler read thread.isLocked and then
+        // issued a separate prisma.forumPost.create — a concurrent lock
+        // between those two operations could let a post land in a
+        // freshly-locked thread. We do the lock check inside the same
+        // transaction that creates the post; if the row is locked the
+        // query returns isLocked=true and we abort.
+        const post = await prisma.$transaction(async (tx) => {
+          const thread = await tx.forumThread.findUnique({
+            where: { id: threadId },
+            select: { isLocked: true },
+          })
+          if (!thread) {
+            throw new ApiError(404, 'THREAD_NOT_FOUND', 'Thread not found')
+          }
+          if (thread.isLocked) {
+            throw new ApiError(403, 'THREAD_LOCKED', 'Cannot post to a locked thread')
+          }
+          return tx.forumPost.create({
+            data: {
+              threadId,
+              content: body.content,
+              authorId: session.user.id, // trusted from session, not body
+            },
+            include: {
+              author: { select: { id: true, name: true, avatarUrl: true } },
+              thread: { select: { id: true, subject: true } },
+            },
+          })
         })
         return res.status(201).json({ success: true, data: post })
       }

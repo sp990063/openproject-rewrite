@@ -27,10 +27,12 @@ export default withRoute(
     switch (req.method) {
       case 'GET': {
         await assertPostProjectMembership(postId, session.user.id, isAdmin)
+        // Phase 3 Sprint 7 FM-2 follow-up: don't leak author.email in the
+        // post GET response.
         const post = await prisma.forumPost.findUnique({
           where: { id: postId },
           include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, avatarUrl: true } },
             thread: {
               select: { id: true, subject: true, forum: { select: { id: true, name: true } } },
             },
@@ -44,11 +46,24 @@ export default withRoute(
 
       case 'PATCH': {
         await assertPostProjectMembership(postId, session.user.id, isAdmin)
+        // Phase 3 Sprint 7 FM-3 fix: only the post author or a system
+        // admin can edit a post. Previously any project member could
+        // rewrite anyone's post (e.g. griefing via content edits).
+        const existingPost = await prisma.forumPost.findUnique({
+          where: { id: postId },
+          select: { authorId: true },
+        })
+        if (!existingPost) {
+          throw new ApiError(404, 'POST_NOT_FOUND', 'Post not found')
+        }
+        if (!isAdmin && existingPost.authorId !== session.user.id) {
+          throw new ApiError(403, 'FORBIDDEN', 'Only the post author or a system admin can edit this post')
+        }
         const post = await prisma.forumPost.update({
           where: { id: postId },
           data: { content: body.content },
           include: {
-            author: { select: { id: true, name: true, email: true, avatarUrl: true } },
+            author: { select: { id: true, name: true, avatarUrl: true } },
             thread: { select: { id: true, subject: true } },
           },
         })
@@ -57,6 +72,18 @@ export default withRoute(
 
       case 'DELETE': {
         await assertPostProjectMembership(postId, session.user.id, isAdmin)
+        // FM-35 parity: project-scoped DELETE is author-or-admin; do
+        // the same here so the two routes behave identically.
+        const existingPost = await prisma.forumPost.findUnique({
+          where: { id: postId },
+          select: { authorId: true },
+        })
+        if (!existingPost) {
+          throw new ApiError(404, 'POST_NOT_FOUND', 'Post not found')
+        }
+        if (!isAdmin && existingPost.authorId !== session.user.id) {
+          throw new ApiError(403, 'FORBIDDEN', 'Only the post author or a system admin can delete this post')
+        }
         await prisma.forumPost.delete({ where: { id: postId } })
         return res.status(204).end()
       }
