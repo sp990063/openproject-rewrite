@@ -4,7 +4,10 @@ import path from 'path'
 import dotenv from 'dotenv'
 
 // Load .env for test environment
-dotenv.config({ path: path.resolve(__dirname, '.env.test') })
+// NOTE: .env.test intentionally omitted — file does not exist in this repo.
+// Tests inherit DATABASE_URL (and other vars) from the project's regular .env,
+// which dotenv falls back to gracefully when the target file is absent.
+// Addresses TT-1 (Phase 3 Sprint 10).
 dotenv.config({ path: path.resolve(__dirname, '.env') })
 
 export default defineConfig({
